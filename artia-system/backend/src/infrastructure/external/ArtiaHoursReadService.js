@@ -3,6 +3,7 @@ import { artiaDB } from '../database/mysql/ArtiaDBConnection.js';
 const USER_TABLE = 'organization_9115_organization_users_v2';
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const TABLE_KEYWORDS = ['timesheet', 'timeentry', 'time_entry', 'timeentries', 'hour', 'hours', 'worklog', 'launch', 'lancamento', 'apont', 'effort'];
+const NEGATIVE_TABLE_KEYWORDS = ['activities', 'activity', 'projects', 'project', 'folders', 'folder', 'milestones', 'milestone', 'resources', 'resource', 'finances', 'finance'];
 
 function normalizeText(value) {
   return String(value || '')
@@ -131,19 +132,19 @@ export class ArtiaHoursReadService {
     return {
       tableName,
       entryIdColumn: this.pickColumn(columns, ['time_entry_id', 'entry_id', 'worklog_id', 'id']),
-      userIdColumn: this.pickColumn(columns, ['user_id', 'responsible_user_id', 'owner_id', 'employee_id', 'collaborator_id', 'person_id', 'resource_id', 'created_by']),
-      userEmailColumn: this.pickColumn(columns, ['user_email', 'employee_email', 'collaborator_email', 'email']),
-      dateColumn: this.pickColumn(columns, ['worked_date', 'work_date', 'launch_date', 'entry_date', 'reference_date', 'date', 'day']),
+      userIdColumn: this.pickColumn(columns, ['members_user_id', 'user_id', 'responsible_user_id', 'owner_id', 'employee_id', 'collaborator_id', 'person_id', 'resource_id', 'created_by']),
+      userEmailColumn: this.pickColumn(columns, ['member_email', 'user_email', 'employee_email', 'collaborator_email', 'responsible_email', 'email']),
+      dateColumn: this.pickColumn(columns, ['date_at', 'worked_date', 'work_date', 'launch_date', 'entry_date', 'reference_date', 'date', 'day']),
       startColumn: this.pickColumn(columns, ['start_time', 'started_at', 'start_at', 'begin_time', 'begin_at', 'initial_time']),
       endColumn: this.pickColumn(columns, ['end_time', 'ended_at', 'finish_time', 'finish_at', 'final_time']),
-      hoursColumn: this.pickColumn(columns, ['worked_hours', 'total_hours', 'hours', 'effort_hours']),
+      hoursColumn: this.pickColumn(columns, ['duration_hour', 'worked_hours', 'total_hours', 'hours', 'effort_hours']),
       minutesColumn: this.pickColumn(columns, ['worked_minutes', 'total_minutes', 'minutes', 'duration_minutes', 'effort_minutes']),
-      durationColumn: this.pickColumn(columns, ['duration', 'time_spent', 'effort', 'elapsed']),
-      projectColumn: this.pickColumn(columns, ['project_number', 'project_name', 'project_title', 'project']),
-      projectIdColumn: this.pickColumn(columns, ['project_id', 'parent_id']),
-      activityColumn: this.pickColumn(columns, ['activity_name', 'activity_label', 'activity_title', 'activity', 'task_name', 'title']),
+      durationColumn: this.pickColumn(columns, ['duration_hour', 'duration', 'time_spent', 'effort', 'elapsed']),
+      projectColumn: this.pickColumn(columns, ['parent_project', 'folder_name', 'project_number', 'project_name', 'project_title', 'project']),
+      projectIdColumn: this.pickColumn(columns, ['folder_last_project_id', 'project_id', 'parent_id']),
+      activityColumn: this.pickColumn(columns, ['activity_title', 'activity_name', 'activity_label', 'activity_title', 'activity', 'task_name', 'title']),
       activityIdColumn: this.pickColumn(columns, ['activity_id', 'task_id']),
-      notesColumn: this.pickColumn(columns, ['notes', 'note', 'description', 'comment', 'comments', 'observacao', 'observation']),
+      notesColumn: this.pickColumn(columns, ['observation', 'notes', 'note', 'description', 'comment', 'comments', 'observacao', 'observation']),
       statusColumn: this.pickColumn(columns, ['status', 'state'])
     };
   }
@@ -174,6 +175,14 @@ export class ArtiaHoursReadService {
 
     if (TABLE_KEYWORDS.some((keyword) => tableName.includes(keyword))) {
       score += 2;
+    }
+
+    if (tableName.includes('time entries') || tableName.includes('time entry')) {
+      score += 6;
+    }
+
+    if (NEGATIVE_TABLE_KEYWORDS.some((keyword) => tableName.includes(keyword))) {
+      score -= 5;
     }
 
     if (/^organization_\d+_/.test(source.tableName)) {

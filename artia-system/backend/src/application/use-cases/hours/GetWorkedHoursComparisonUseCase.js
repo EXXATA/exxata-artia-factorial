@@ -1,14 +1,27 @@
 import { WorkedHoursComparison } from '../../../domain/value-objects/WorkedHoursComparison.js';
 
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export class GetWorkedHoursComparisonUseCase {
-  constructor(factorialService, eventRepository, userRepository, artiaHoursReadService) {
-    this.factorialService = factorialService;
+  constructor(eventRepository, userRepository, integrationReadModelService) {
     this.eventRepository = eventRepository;
     this.userRepository = userRepository;
-    this.artiaHoursReadService = artiaHoursReadService;
+    this.integrationReadModelService = integrationReadModelService;
   }
 
   buildRange(options = {}) {
+    if (options.startDate && options.endDate) {
+      return { startDate: options.startDate, endDate: options.endDate };
+    }
+
     if (options.year && options.month) {
       const startDate = `${options.year}-${String(options.month).padStart(2, '0')}-01`;
       const endDate = new Date(options.year, options.month, 0).toISOString().split('T')[0];
@@ -23,23 +36,9 @@ export class GetWorkedHoursComparisonUseCase {
       return { startDate: day, endDate: day };
     }
 
-    return { startDate: null, endDate: null };
-  }
-
-  isWithinRange(day, range) {
-    if (!day) {
-      return false;
-    }
-
-    if (range.startDate && day < range.startDate) {
-      return false;
-    }
-
-    if (range.endDate && day > range.endDate) {
-      return false;
-    }
-
-    return true;
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0];
+    return { startDate, endDate };
   }
 
   async loadSystemEvents(userId, range) {
@@ -48,6 +47,377 @@ export class GetWorkedHoursComparisonUseCase {
     }
 
     return this.eventRepository.findAll({ userId });
+  }
+
+  buildProjectCatalogContext(projectCatalog = []) {
+    const byId = new Map();
+    const byNumber = new Map();
+    const byNormalizedLabel = new Map();
+
+    projectCatalog.forEach((project) => {
+      const normalizedNumber = normalizeText(project.number);
+      const normalizedLabel = normalizeText(`${project.number || ''} ${project.name || ''}`);
+
+      if (project.id) {
+        byId.set(String(project.id), project);
+      }
+
+      if (normalizedNumber) {
+        byNumber.set(normalizedNumber, project);
+      }
+
+      if (normalizedLabel) {
+        byNormalizedLabel.set(normalizedLabel, project);
+      }
+    });
+
+    return {
+      list: projectCatalog,
+      byId,
+      byNumber,
+      byNormalizedLabel
+    };
+  }
+
+  extractProjectNumber(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+      return '';
+    }
+
+    if (text.includes(' - ')) {
+      return text.split(' - ')[0].trim();
+    }
+
+    return text;
+  }
+
+  resolveProjectDescriptor(projectContext, { systemProject = '', artiaProject = '', artiaProjectId = '' } = {}) {
+    const projectIdKey = artiaProjectId ? String(artiaProjectId).trim() : '';
+    if (projectIdKey && projectContext.byId.has(projectIdKey)) {
+      const catalogProject = projectContext.byId.get(projectIdKey);
+      return {
+        key: String(catalogProject.id),
+        id: String(catalogProject.id),
+        number: String(catalogProject.number || '').trim(),
+        name: String(catalogProject.name || '').trim(),
+        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
+      };
+    }
+
+    const normalizedSystemProject = normalizeText(this.extractProjectNumber(systemProject));
+    if (normalizedSystemProject && projectContext.byNumber.has(normalizedSystemProject)) {
+      const catalogProject = projectContext.byNumber.get(normalizedSystemProject);
+      return {
+        key: String(catalogProject.id),
+        id: String(catalogProject.id),
+        number: String(catalogProject.number || '').trim(),
+        name: String(catalogProject.name || '').trim(),
+        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
+      };
+    }
+
+    const normalizedArtiaProjectNumber = normalizeText(this.extractProjectNumber(artiaProject));
+    if (normalizedArtiaProjectNumber && projectContext.byNumber.has(normalizedArtiaProjectNumber)) {
+      const catalogProject = projectContext.byNumber.get(normalizedArtiaProjectNumber);
+      return {
+        key: String(catalogProject.id),
+        id: String(catalogProject.id),
+        number: String(catalogProject.number || '').trim(),
+        name: String(catalogProject.name || '').trim(),
+        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
+      };
+    }
+
+    const normalizedArtiaLabel = normalizeText(artiaProject);
+    if (normalizedArtiaLabel && projectContext.byNormalizedLabel.has(normalizedArtiaLabel)) {
+      const catalogProject = projectContext.byNormalizedLabel.get(normalizedArtiaLabel);
+      return {
+        key: String(catalogProject.id),
+        id: String(catalogProject.id),
+        number: String(catalogProject.number || '').trim(),
+        name: String(catalogProject.name || '').trim(),
+        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
+      };
+    }
+
+    const rawNumber = this.extractProjectNumber(systemProject || artiaProject || projectIdKey);
+    const rawName = String(artiaProject || systemProject || rawNumber || 'Sem projeto').trim();
+
+    return {
+      key: projectIdKey || normalizeText(rawNumber || rawName) || 'sem-projeto',
+      id: projectIdKey || null,
+      number: rawNumber || null,
+      name: rawName || 'Sem projeto',
+      label: rawNumber && rawName && rawName !== rawNumber ? `${rawNumber} - ${rawName}` : rawName || rawNumber || 'Sem projeto'
+    };
+  }
+
+  matchesProjectFilter(projectContext, projectFilter, payload) {
+    if (!projectFilter) {
+      return true;
+    }
+
+    const descriptor = this.resolveProjectDescriptor(projectContext, payload);
+    const normalizedFilter = normalizeText(projectFilter);
+
+    return [descriptor.key, descriptor.id, descriptor.number, descriptor.name, descriptor.label]
+      .filter(Boolean)
+      .some((value) => normalizeText(value) === normalizedFilter || normalizeText(value).includes(normalizedFilter));
+  }
+
+  matchesActivityFilter(activityFilter, activityId, activityLabel) {
+    if (!activityFilter) {
+      return true;
+    }
+
+    const normalizedFilter = normalizeText(activityFilter);
+    return [activityId, activityLabel]
+      .filter(Boolean)
+      .some((value) => normalizeText(value) === normalizedFilter || normalizeText(value).includes(normalizedFilter));
+  }
+
+  serializeSystemEvent(event, projectDescriptor) {
+    const startDate = new Date(event.start);
+    const endDate = new Date(event.end);
+    const minutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+
+    return {
+      id: event.id,
+      day: event.day,
+      start: event.start,
+      end: event.end,
+      minutes,
+      hours: Number((minutes / 60).toFixed(2)),
+      project: event.project,
+      projectKey: projectDescriptor.key,
+      projectId: projectDescriptor.id,
+      projectNumber: projectDescriptor.number,
+      projectName: projectDescriptor.name,
+      projectLabel: projectDescriptor.label,
+      activityId: event.activityId,
+      activityLabel: event.activityLabel,
+      notes: event.notes || '',
+      artiaLaunched: Boolean(event.artiaLaunched),
+      artiaSyncStatus: event.artiaSyncStatus,
+      artiaSyncLabel: event.artiaSyncLabel,
+      artiaRemoteEntryId: event.artiaRemoteEntryId,
+      artiaRemoteHours: event.artiaRemoteHours || 0,
+      artiaRemoteProject: event.artiaRemoteProject || null,
+      artiaRemoteActivity: event.artiaRemoteActivity || null,
+      artiaRemoteStart: event.artiaRemoteStart || null,
+      artiaRemoteEnd: event.artiaRemoteEnd || null
+    };
+  }
+
+  serializeArtiaEntry(entry, projectDescriptor) {
+    return {
+      id: entry.id,
+      day: entry.date,
+      start: entry.start,
+      end: entry.end,
+      minutes: entry.minutes,
+      hours: entry.hours,
+      project: entry.project,
+      projectKey: projectDescriptor.key,
+      projectId: projectDescriptor.id,
+      projectNumber: projectDescriptor.number,
+      projectName: projectDescriptor.name,
+      projectLabel: projectDescriptor.label,
+      activity: entry.activity,
+      activityId: entry.activityId,
+      notes: entry.notes || '',
+      status: entry.status || null,
+      sourceTable: entry.sourceTable || null
+    };
+  }
+
+  groupByDay(items, dayField) {
+    return items.reduce((accumulator, item) => {
+      const day = item[dayField];
+      if (!day) {
+        return accumulator;
+      }
+
+      if (!accumulator[day]) {
+        accumulator[day] = [];
+      }
+
+      accumulator[day].push(item);
+      return accumulator;
+    }, {});
+  }
+
+  buildProjectAndActivitySummaries({ comparisons, systemEvents, artiaEntries, remoteOnlyEntryIds }) {
+    const projectMap = new Map();
+    const activityMap = new Map();
+    const comparisonByDate = Object.fromEntries(comparisons.map((comparison) => [comparison.date, comparison]));
+
+    const ensureProjectSummary = (projectDescriptor) => {
+      if (!projectMap.has(projectDescriptor.key)) {
+        projectMap.set(projectDescriptor.key, {
+          projectKey: projectDescriptor.key,
+          projectId: projectDescriptor.id,
+          projectNumber: projectDescriptor.number,
+          projectName: projectDescriptor.name,
+          projectLabel: projectDescriptor.label,
+          systemHours: 0,
+          syncedSystemHours: 0,
+          pendingSystemHours: 0,
+          manualSystemHours: 0,
+          systemEventCount: 0,
+          artiaHours: 0,
+          artiaEntryCount: 0,
+          remoteOnlyArtiaHours: 0,
+          remoteOnlyArtiaEntryCount: 0,
+          byDay: {}
+        });
+      }
+
+      return projectMap.get(projectDescriptor.key);
+    };
+
+    const ensureProjectDay = (projectSummary, day) => {
+      if (!projectSummary.byDay[day]) {
+        const comparison = comparisonByDate[day] || null;
+        projectSummary.byDay[day] = {
+          day,
+          factorialHours: comparison?.factorialHours || 0,
+          systemHours: 0,
+          syncedSystemHours: 0,
+          pendingSystemHours: 0,
+          manualSystemHours: 0,
+          artiaHours: 0,
+          artiaEntryCount: 0,
+          remoteOnlyArtiaHours: 0,
+          remoteOnlyArtiaEntryCount: 0
+        };
+      }
+
+      return projectSummary.byDay[day];
+    };
+
+    const ensureActivitySummary = (projectDescriptor, activityId, activityLabel) => {
+      const key = `${projectDescriptor.key}::${activityId || activityLabel || 'sem-atividade'}`;
+      if (!activityMap.has(key)) {
+        activityMap.set(key, {
+          key,
+          projectKey: projectDescriptor.key,
+          projectId: projectDescriptor.id,
+          projectNumber: projectDescriptor.number,
+          projectName: projectDescriptor.name,
+          projectLabel: projectDescriptor.label,
+          activityId: activityId || null,
+          activityLabel: activityLabel || 'Sem atividade',
+          systemHours: 0,
+          systemEventCount: 0,
+          artiaHours: 0,
+          artiaEntryCount: 0,
+          remoteOnlyArtiaHours: 0,
+          remoteOnlyArtiaEntryCount: 0
+        });
+      }
+
+      return activityMap.get(key);
+    };
+
+    systemEvents.forEach((event) => {
+      const projectDescriptor = {
+        key: event.projectKey,
+        id: event.projectId,
+        number: event.projectNumber,
+        name: event.projectName,
+        label: event.projectLabel
+      };
+      const projectSummary = ensureProjectSummary(projectDescriptor);
+      const daySummary = ensureProjectDay(projectSummary, event.day);
+      const activitySummary = ensureActivitySummary(projectDescriptor, event.activityId, event.activityLabel);
+
+      projectSummary.systemHours += event.hours;
+      projectSummary.systemEventCount += 1;
+      daySummary.systemHours += event.hours;
+
+      if (event.artiaSyncStatus === 'synced') {
+        projectSummary.syncedSystemHours += event.hours;
+        daySummary.syncedSystemHours += event.hours;
+      } else {
+        projectSummary.pendingSystemHours += event.hours;
+        daySummary.pendingSystemHours += event.hours;
+
+        if (event.artiaSyncStatus === 'manual') {
+          projectSummary.manualSystemHours += event.hours;
+          daySummary.manualSystemHours += event.hours;
+        }
+      }
+
+      activitySummary.systemHours += event.hours;
+      activitySummary.systemEventCount += 1;
+    });
+
+    artiaEntries.forEach((entry) => {
+      const projectDescriptor = {
+        key: entry.projectKey,
+        id: entry.projectId,
+        number: entry.projectNumber,
+        name: entry.projectName,
+        label: entry.projectLabel
+      };
+      const projectSummary = ensureProjectSummary(projectDescriptor);
+      const daySummary = ensureProjectDay(projectSummary, entry.day);
+      const activitySummary = ensureActivitySummary(projectDescriptor, entry.activityId, entry.activity);
+      const isRemoteOnly = remoteOnlyEntryIds.has(entry.id);
+
+      projectSummary.artiaHours += entry.hours;
+      projectSummary.artiaEntryCount += 1;
+      daySummary.artiaHours += entry.hours;
+      daySummary.artiaEntryCount += 1;
+
+      activitySummary.artiaHours += entry.hours;
+      activitySummary.artiaEntryCount += 1;
+
+      if (isRemoteOnly) {
+        projectSummary.remoteOnlyArtiaHours += entry.hours;
+        projectSummary.remoteOnlyArtiaEntryCount += 1;
+        daySummary.remoteOnlyArtiaHours += entry.hours;
+        daySummary.remoteOnlyArtiaEntryCount += 1;
+
+        activitySummary.remoteOnlyArtiaHours += entry.hours;
+        activitySummary.remoteOnlyArtiaEntryCount += 1;
+      }
+    });
+
+    const projectSummaries = Array.from(projectMap.values())
+      .map((summary) => ({
+        ...summary,
+        differenceHours: Number((summary.systemHours - summary.artiaHours).toFixed(2)),
+        byDay: Object.values(summary.byDay).sort((left, right) => left.day.localeCompare(right.day))
+      }))
+      .sort((left, right) => (right.artiaHours + right.systemHours) - (left.artiaHours + left.systemHours));
+
+    const activitySummaries = Array.from(activityMap.values())
+      .map((summary) => ({
+        ...summary,
+        differenceHours: Number((summary.systemHours - summary.artiaHours).toFixed(2))
+      }))
+      .sort((left, right) => (right.artiaHours + right.systemHours) - (left.artiaHours + left.systemHours));
+
+    return {
+      projectSummaries,
+      activitySummaries,
+      availableProjects: projectSummaries.map((summary) => ({
+        key: summary.projectKey,
+        id: summary.projectId,
+        number: summary.projectNumber,
+        name: summary.projectName,
+        label: summary.projectLabel
+      })),
+      availableActivities: activitySummaries.map((summary) => ({
+        key: summary.key,
+        projectKey: summary.projectKey,
+        activityId: summary.activityId,
+        activityLabel: summary.activityLabel
+      }))
+    };
   }
 
   async execute(userId, options = {}) {
@@ -62,61 +432,105 @@ export class GetWorkedHoursComparisonUseCase {
     }
 
     const range = this.buildRange(options);
-    const factorialHoursByDay = await this.factorialService.getAllWorkedHours(user.factorialEmployeeId);
-    const filteredFactorialHoursByDay = Object.fromEntries(
-      Object.entries(factorialHoursByDay).filter(([day]) => this.isWithinRange(day, range))
-    );
+    const projectCatalog = await this.integrationReadModelService.getProjectCatalog();
+    const projectContext = this.buildProjectCatalogContext(projectCatalog);
+    const factorialHoursByDay = await this.integrationReadModelService.getFactorialDailyHours(user, range, {
+      forceRefresh: options.forceRefresh
+    });
 
     const systemEvents = await this.loadSystemEvents(userId, range);
     const serializedEvents = systemEvents.map((event) => event.toJSON());
 
-    const artiaResult = await this.artiaHoursReadService.getWorkedTimeEntriesForUser({
-      email: user.email,
-      artiaUserId: user.artiaUserId,
+    const artiaSnapshot = await this.integrationReadModelService.getArtiaSnapshots(user, range, {
+      forceRefresh: options.forceRefresh
+    });
+
+    const decoratedEvents = await this.integrationReadModelService.decorateEventsWithSyncStatus(serializedEvents, user, {
       startDate: range.startDate,
-      endDate: range.endDate
+      endDate: range.endDate,
+      forceRefresh: false
     });
 
-    const decoratedEvents = this.artiaHoursReadService.decorateEventsWithTimeEntries(
-      serializedEvents,
-      artiaResult.entries,
-      artiaResult.source,
-      artiaResult.reason
+    const filteredDecoratedEvents = decoratedEvents
+      .filter((event) => this.matchesProjectFilter(projectContext, options.project, { systemProject: event.project }))
+      .filter((event) => this.matchesActivityFilter(options.activity, event.activityId, event.activityLabel));
+
+    const serializedSystemEvents = filteredDecoratedEvents.map((event) => {
+      const projectDescriptor = this.resolveProjectDescriptor(projectContext, { systemProject: event.project });
+      return this.serializeSystemEvent(event, projectDescriptor);
+    });
+
+    const filteredArtiaEntries = (artiaSnapshot.entries || [])
+      .filter((entry) => this.matchesProjectFilter(projectContext, options.project, {
+        systemProject: '',
+        artiaProject: entry.project,
+        artiaProjectId: entry.projectId
+      }))
+      .filter((entry) => this.matchesActivityFilter(options.activity, entry.activityId, entry.activity))
+      .map((entry) => {
+        const projectDescriptor = this.resolveProjectDescriptor(projectContext, {
+          systemProject: '',
+          artiaProject: entry.project,
+          artiaProjectId: entry.projectId
+        });
+
+        return this.serializeArtiaEntry(entry, projectDescriptor);
+      });
+
+    const fallbackArtiaHoursByDay = Object.fromEntries(
+      Object.entries(artiaSnapshot.dailyHoursByDay || {}).map(([day, value]) => [day, value.workedHours || 0])
     );
-
-    const artiaHoursByDay = {};
-    const artiaEntriesCountByDay = {};
-    artiaResult.entries.forEach((entry) => {
-      artiaHoursByDay[entry.date] = (artiaHoursByDay[entry.date] || 0) + entry.hours;
-      artiaEntriesCountByDay[entry.date] = (artiaEntriesCountByDay[entry.date] || 0) + 1;
-    });
+    const fallbackArtiaEntriesCountByDay = Object.fromEntries(
+      Object.entries(artiaSnapshot.dailyHoursByDay || {}).map(([day, value]) => [day, value.entryCount || 0])
+    );
+    const useArtiaEntriesAsSource = filteredArtiaEntries.length > 0 || Boolean(options.project || options.activity);
+    const artiaHoursByDay = useArtiaEntriesAsSource
+      ? filteredArtiaEntries.reduce((accumulator, entry) => {
+        accumulator[entry.day] = (accumulator[entry.day] || 0) + (entry.hours || 0);
+        return accumulator;
+      }, {})
+      : fallbackArtiaHoursByDay;
+    const artiaEntriesCountByDay = useArtiaEntriesAsSource
+      ? filteredArtiaEntries.reduce((accumulator, entry) => {
+        accumulator[entry.day] = (accumulator[entry.day] || 0) + 1;
+        return accumulator;
+      }, {})
+      : fallbackArtiaEntriesCountByDay;
 
     const systemHoursByDay = {};
     const syncedSystemHoursByDay = {};
     const pendingSystemHoursByDay = {};
     const manualSystemHoursByDay = {};
 
-    decoratedEvents.forEach((event) => {
-      const start = new Date(event.start);
-      const end = new Date(event.end);
-      const hours = Math.max(0, (end.getTime() - start.getTime()) / 3600000);
+    serializedSystemEvents.forEach((event) => {
+      const hours = event.hours;
 
       systemHoursByDay[event.day] = (systemHoursByDay[event.day] || 0) + hours;
 
       if (event.artiaSyncStatus === 'synced') {
         syncedSystemHoursByDay[event.day] = (syncedSystemHoursByDay[event.day] || 0) + hours;
-        return;
+      } else {
+        pendingSystemHoursByDay[event.day] = (pendingSystemHoursByDay[event.day] || 0) + hours;
       }
-
-      pendingSystemHoursByDay[event.day] = (pendingSystemHoursByDay[event.day] || 0) + hours;
 
       if (event.artiaSyncStatus === 'manual') {
         manualSystemHoursByDay[event.day] = (manualSystemHoursByDay[event.day] || 0) + hours;
       }
     });
 
+    const matchedRemoteEntryIds = new Set(
+      serializedSystemEvents
+        .map((event) => event.artiaRemoteEntryId)
+        .filter(Boolean)
+    );
+
+    const remoteOnlyArtiaEntries = filteredArtiaEntries.filter((entry) => !matchedRemoteEntryIds.has(entry.id));
+    const systemEventsByDay = this.groupByDay(serializedSystemEvents, 'day');
+    const artiaEntriesByDay = this.groupByDay(filteredArtiaEntries, 'day');
+    const remoteOnlyArtiaEntriesByDay = this.groupByDay(remoteOnlyArtiaEntries, 'day');
+
     const allDates = new Set([
-      ...Object.keys(filteredFactorialHoursByDay),
+      ...Object.keys(factorialHoursByDay),
       ...Object.keys(systemHoursByDay),
       ...Object.keys(artiaHoursByDay)
     ]);
@@ -124,7 +538,7 @@ export class GetWorkedHoursComparisonUseCase {
     const comparisons = Array.from(allDates).map((date) => {
       return new WorkedHoursComparison({
         date,
-        factorialHours: filteredFactorialHoursByDay[date] || 0,
+        factorialHours: factorialHoursByDay[date] || 0,
         artiaHours: artiaHoursByDay[date] || 0,
         systemHours: systemHoursByDay[date] || 0,
         syncedSystemHours: syncedSystemHoursByDay[date] || 0,
@@ -134,7 +548,22 @@ export class GetWorkedHoursComparisonUseCase {
       });
     });
 
-    comparisons.sort((a, b) => b.date - a.date);
+    comparisons.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    const comparisonsJson = comparisons.map((comparison) => comparison.toJSON());
+    const dailyDetails = comparisonsJson.map((comparison) => ({
+      ...comparison,
+      systemEvents: systemEventsByDay[comparison.date] || [],
+      artiaEntries: artiaEntriesByDay[comparison.date] || [],
+      remoteOnlyArtiaEntries: remoteOnlyArtiaEntriesByDay[comparison.date] || []
+    }));
+
+    const summaries = this.buildProjectAndActivitySummaries({
+      comparisons: comparisonsJson,
+      systemEvents: serializedSystemEvents,
+      artiaEntries: filteredArtiaEntries,
+      remoteOnlyEntryIds: new Set(remoteOnlyArtiaEntries.map((entry) => entry.id))
+    });
 
     const stats = {
       totalDays: comparisons.length,
@@ -146,13 +575,27 @@ export class GetWorkedHoursComparisonUseCase {
       totalSyncedSystemHours: comparisons.reduce((sum, comparison) => sum + comparison.syncedSystemHours, 0),
       totalPendingSystemHours: comparisons.reduce((sum, comparison) => sum + comparison.pendingSystemHours, 0),
       totalManualSystemHours: comparisons.reduce((sum, comparison) => sum + comparison.manualSystemHours, 0),
-      artiaSourceAvailable: Boolean(artiaResult.source),
-      artiaSourceTable: artiaResult.source?.tableName || null,
-      artiaReadReason: artiaResult.reason
+      artiaSourceAvailable: Boolean(artiaSnapshot.source),
+      artiaSourceTable: artiaSnapshot.source?.tableName || null,
+      artiaReadReason: artiaSnapshot.reason,
+      projectCount: summaries.projectSummaries.length,
+      activityCount: summaries.activitySummaries.length,
+      remoteOnlyArtiaEntries: remoteOnlyArtiaEntries.length,
+      filtersApplied: {
+        startDate: range.startDate,
+        endDate: range.endDate,
+        project: options.project || null,
+        activity: options.activity || null
+      }
     };
 
     return {
-      comparisons: comparisons.map((comparison) => comparison.toJSON()),
+      comparisons: comparisonsJson,
+      dailyDetails,
+      projectSummaries: summaries.projectSummaries,
+      activitySummaries: summaries.activitySummaries,
+      availableProjects: summaries.availableProjects,
+      availableActivities: summaries.availableActivities,
       stats
     };
   }

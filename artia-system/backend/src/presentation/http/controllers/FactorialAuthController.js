@@ -58,6 +58,14 @@ export class FactorialAuthController {
           message: error.message
         });
       }
+
+      if (error.message.includes('Usuário sem senha definida')) {
+        return res.status(400).json({
+          success: false,
+          message: error.message
+        });
+      }
+
       next(error);
     }
   }

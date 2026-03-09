@@ -71,81 +71,76 @@ export default function Header() {
   }, [navigate, toggleTheme]);
 
   return (
-    <header className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(18,27,41,0.96),rgba(8,12,19,0.98))] shadow-[0_14px_50px_rgba(0,0,0,0.28)]">
-      <div className="px-4 py-3">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <header className="app-header-surface">
+      <div className="py-3">
+        <div className="app-header-row">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_0_4px_rgba(78,161,255,0.15)]"></div>
+            <div className="h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_0_4px_rgba(78,161,255,0.12)]"></div>
             <div>
-              <h1 className="text-lg font-semibold text-white">
+              <h1 className="text-base font-semibold text-slate-900 dark:text-white">
                 Apontamento de Horas
-                <span className="ml-1 text-[#d51d07]">Artia</span>
+                <span className="ml-1 text-primary">Artia</span>
               </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">
-                  Fonte: MySQL Artia
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                  Alt+D Dados
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                  Alt+T Tema
-                </span>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="app-brand-chip">Fonte: MySQL Artia</span>
+                <span className="app-brand-chip">Alt+D Dados</span>
+                <span className="app-brand-chip">Alt+T Tema</span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {user && (
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+              <span className="app-brand-chip">
                 {user.name}
               </span>
             )}
             <button
               onClick={() => setIsDataActionsOpen(true)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 transition hover:bg-white/10"
+              className="app-action-button"
               title="Importar e exportar dados"
             >
               Dados
-              <span className="ml-2 text-xs text-slate-400">Alt+D</span>
+              <span className="text-[11px] text-slate-400">Alt+D</span>
             </button>
             <button
               onClick={toggleTheme}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 transition hover:bg-white/10"
+              className="app-action-button"
               title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
             >
-              {theme === 'dark' ? '☀️' : '🌙'}
-              <span className="ml-2 text-xs text-slate-400">Alt+T</span>
+              <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
+              <span className="text-[11px] text-slate-400">Alt+T</span>
             </button>
             <button
               onClick={handleLogout}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-100 transition hover:bg-white/10"
+              className="app-action-button"
               title="Sair"
             >
               Sair
-              <span className="ml-2 text-xs text-slate-400">Alt+L</span>
+              <span className="text-[11px] text-slate-400">Alt+L</span>
             </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {views.map((view) => (
-            <button
-              key={view.path}
-              onClick={() => navigate(view.path)}
-              className={`group rounded-2xl border px-4 py-2.5 text-left transition ${
-                location.pathname === view.path
-                  ? 'border-primary/50 bg-primary/20 text-white shadow-[0_8px_24px_rgba(78,161,255,0.25)]'
-                  : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
-              }`}
-            >
-              <div className="text-sm font-semibold">{view.label}</div>
-              <div className={`text-[11px] ${location.pathname === view.path ? 'text-primary-light' : 'text-slate-500 group-hover:text-slate-400'}`}>
-                {view.shortcut}
-              </div>
-            </button>
-          ))}
-        </div>
+        <nav className="app-tab-nav mt-3">
+          {views.map((view) => {
+            const isActive = location.pathname === view.path;
+
+            return (
+              <button
+                key={view.path}
+                onClick={() => navigate(view.path)}
+                className={`app-tab ${isActive ? 'app-tab-active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <span>{view.label}</span>
+                <span className={`text-[11px] ${isActive ? 'text-primary-light dark:text-primary-light' : 'text-slate-400 dark:text-slate-500'}`}>
+                  {view.shortcut}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
 
         <DataActionsModal
           isOpen={isDataActionsOpen}

@@ -9,6 +9,7 @@ import { authMiddleware } from './presentation/http/middlewares/authMiddleware.j
 
 // Repositories
 import { EventRepository } from './infrastructure/database/supabase/EventRepository.js';
+import { IntegrationSnapshotRepository } from './infrastructure/database/supabase/IntegrationSnapshotRepository.js';
 import { ProjectRepository } from './infrastructure/database/supabase/ProjectRepository.js';
 import { UserRepository } from './infrastructure/database/supabase/UserRepository.js';
 
@@ -22,6 +23,7 @@ import { CSVGenerator } from './infrastructure/file-storage/CSVGenerator.js';
 import { XLSXGenerator } from './infrastructure/file-storage/XLSXGenerator.js';
 import { XLSXParser } from './infrastructure/file-storage/XLSXParser.js';
 import { LegacyEventsXLSXParser } from './infrastructure/file-storage/LegacyEventsXLSXParser.js';
+import { InMemoryTtlCache } from './infrastructure/cache/InMemoryTtlCache.js';
 
 // External Services
 import { ArtiaAuthService } from './infrastructure/external/ArtiaAuthService.js';
@@ -45,6 +47,7 @@ import { LoginWithArtiaDBUseCase } from './application/use-cases/auth/LoginWithA
 import { RegisterWithFactorialUseCase } from './application/use-cases/auth/RegisterWithFactorialUseCase.js';
 import { LoginUseCase } from './application/use-cases/auth/LoginUseCase.js';
 import { GetWorkedHoursComparisonUseCase } from './application/use-cases/hours/GetWorkedHoursComparisonUseCase.js';
+import { IntegrationReadModelService } from './application/services/IntegrationReadModelService.js';
 
 // Controllers
 import { EventController } from './presentation/http/controllers/EventController.js';
@@ -108,6 +111,7 @@ app.use(rateLimitMiddleware);
 
 // Dependency Injection
 const eventRepository = new EventRepository();
+const integrationSnapshotRepository = new IntegrationSnapshotRepository();
 const projectRepository = new ProjectRepository();
 const userRepository = new UserRepository();
 
@@ -119,11 +123,19 @@ const csvGenerator = new CSVGenerator();
 const xlsxGenerator = new XLSXGenerator();
 const xlsxParser = new XLSXParser();
 const legacyEventsXLSXParser = new LegacyEventsXLSXParser();
+const inMemoryCache = new InMemoryTtlCache();
 
 const artiaAuthService = new ArtiaAuthService();
 const artiaDBService = new ArtiaDBService();
 const artiaHoursReadService = new ArtiaHoursReadService();
 const factorialService = new FactorialService();
+const integrationReadModelService = new IntegrationReadModelService({
+  snapshotRepository: integrationSnapshotRepository,
+  artiaDBService,
+  factorialService,
+  artiaHoursReadService,
+  inMemoryCache
+});
 
 const createEventUseCase = new CreateEventUseCase(eventRepository, eventValidationService);
 const updateEventUseCase = new UpdateEventUseCase(eventRepository, eventValidationService);
@@ -148,10 +160,9 @@ const loginWithArtiaDBUseCase = new LoginWithArtiaDBUseCase(artiaDBService, user
 const registerWithFactorialUseCase = new RegisterWithFactorialUseCase(factorialService, userRepository);
 const loginUseCase = new LoginUseCase(userRepository);
 const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
-  factorialService,
   eventRepository,
   userRepository,
-  artiaHoursReadService
+  integrationReadModelService
 );
 
 const eventController = new EventController(
@@ -161,14 +172,14 @@ const eventController = new EventController(
   listEventsUseCase,
   moveEventUseCase,
   importLegacyEventsUseCase,
-  artiaHoursReadService
+  integrationReadModelService
 );
 
 const projectController = new ProjectController(
   importProjectsUseCase,
   searchProjectsUseCase,
   projectRepository,
-  artiaDBService
+  integrationReadModelService
 );
 
 const exportController = new ExportController(exportToCSVUseCase, exportToXLSXUseCase);

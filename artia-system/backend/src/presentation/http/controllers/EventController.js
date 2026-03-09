@@ -6,7 +6,7 @@ export class EventController {
     listEventsUseCase,
     moveEventUseCase,
     importLegacyEventsUseCase,
-    artiaHoursReadService
+    integrationReadModelService
   ) {
     this.createEventUseCase = createEventUseCase;
     this.updateEventUseCase = updateEventUseCase;
@@ -14,7 +14,7 @@ export class EventController {
     this.listEventsUseCase = listEventsUseCase;
     this.moveEventUseCase = moveEventUseCase;
     this.importLegacyEventsUseCase = importLegacyEventsUseCase;
-    this.artiaHoursReadService = artiaHoursReadService;
+    this.integrationReadModelService = integrationReadModelService;
   }
 
   async create(req, res, next) {
@@ -45,11 +45,15 @@ export class EventController {
 
       const events = await this.listEventsUseCase.execute(filters, userId);
 
-      const enrichedEvents = await this.artiaHoursReadService.decorateEventsWithSyncStatus(events, {
+      const enrichedEvents = await this.integrationReadModelService.decorateEventsWithSyncStatus(events, {
+        id: req.user.id,
         email: req.user.email,
         artiaUserId: req.user.artiaUserId,
+        factorialEmployeeId: req.user.factorialEmployeeId
+      }, {
         startDate: filters.day || filters.startDate,
-        endDate: filters.day || filters.endDate
+        endDate: filters.day || filters.endDate,
+        forceRefresh: req.query.refresh
       });
 
       res.status(200).json({

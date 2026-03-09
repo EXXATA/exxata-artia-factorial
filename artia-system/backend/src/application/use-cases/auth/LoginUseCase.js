@@ -19,6 +19,10 @@ export class LoginUseCase {
       throw new Error('Credenciais inválidas');
     }
 
+    if (!user.passwordHash) {
+      throw new Error('Usuário sem senha definida. Use o primeiro acesso para criar sua senha.');
+    }
+
     // 3. Validar senha com bcrypt
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
@@ -31,7 +35,8 @@ export class LoginUseCase {
       {
         userId: user.id,
         email: user.email,
-        factorialEmployeeId: user.factorialEmployeeId
+        factorialEmployeeId: user.factorialEmployeeId,
+        artiaUserId: user.artiaUserId
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -43,7 +48,8 @@ export class LoginUseCase {
         id: user.id,
         email: user.email,
         name: user.name,
-        factorialEmployeeId: user.factorialEmployeeId
+        factorialEmployeeId: user.factorialEmployeeId,
+        artiaUserId: user.artiaUserId
       }
     };
   }

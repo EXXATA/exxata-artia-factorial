@@ -1,0 +1,17 @@
+{
+  "name": "artia-population-scripts",
+  "version": "1.0.0",
+  "description": "Scripts para população de dados Artia no Supabase",
+  "main": "populate-artia-data.js",
+  "type": "module",
+  "scripts": {
+    "populate": "node populate-artia-data.js",
+    "discover:artia-time-source": "node discover-artia-time-source.js",
+    "backfill:artia-caches": "node backfill-artia-caches.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.6.5",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  }
+}

@@ -21,12 +21,10 @@ export class LoginWithArtiaDBUseCase {
         artiaToken: null // Não há token, conexão é direta ao banco
       });
     } else {
-      // Atualiza informações do usuário se necessário
-      if (user.name !== artiaAuth.user.name) {
-        await this.userRepository.update(user.id, {
-          name: artiaAuth.user.name
-        });
-      }
+      user = await this.userRepository.updateIdentity(user.id, {
+        name: artiaAuth.user.name,
+        artiaUserId: artiaAuth.user.artiaUserId
+      });
     }
 
     // 3. Gera JWT próprio do sistema
@@ -34,7 +32,8 @@ export class LoginWithArtiaDBUseCase {
       {
         userId: user.id,
         email: user.email,
-        artiaUserId: user.artiaUserId
+        artiaUserId: user.artiaUserId,
+        factorialEmployeeId: user.factorialEmployeeId
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -46,7 +45,8 @@ export class LoginWithArtiaDBUseCase {
         id: user.id,
         email: user.email,
         name: user.name,
-        artiaUserId: user.artiaUserId
+        artiaUserId: user.artiaUserId,
+        factorialEmployeeId: user.factorialEmployeeId
       }
     };
   }

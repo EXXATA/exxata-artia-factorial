@@ -1,9 +1,9 @@
 export class ProjectController {
-  constructor(importProjectsUseCase, searchProjectsUseCase, projectRepository, artiaDBService) {
+  constructor(importProjectsUseCase, searchProjectsUseCase, projectRepository, integrationReadModelService) {
     this.importProjectsUseCase = importProjectsUseCase;
     this.searchProjectsUseCase = searchProjectsUseCase;
     this.projectRepository = projectRepository;
-    this.artiaDBService = artiaDBService;
+    this.integrationReadModelService = integrationReadModelService;
   }
 
   async import(req, res, next) {
@@ -29,7 +29,9 @@ export class ProjectController {
 
   async list(req, res, next) {
     try {
-      const projects = await this.artiaDBService.getProjectsWithActivities();
+      const projects = await this.integrationReadModelService.getProjectCatalog({
+        forceRefresh: req.query.refresh
+      });
 
       res.status(200).json({
         success: true,
@@ -46,7 +48,10 @@ export class ProjectController {
       const { q } = req.query;
 
       const searchTerm = String(q || '').trim().toLowerCase();
-      const filteredProjects = await this.artiaDBService.getProjectsWithActivities(searchTerm);
+      const filteredProjects = await this.integrationReadModelService.getProjectCatalog({
+        searchTerm,
+        forceRefresh: req.query.refresh
+      });
 
       res.status(200).json({
         success: true,
@@ -62,7 +67,9 @@ export class ProjectController {
     try {
       const { id } = req.params;
 
-      const activities = await this.artiaDBService.getProjectActivities(id);
+      const activities = await this.integrationReadModelService.getProjectActivities(id, {
+        forceRefresh: req.query.refresh
+      });
 
       res.status(200).json({
         success: true,

@@ -16,7 +16,7 @@ function App() {
 
   return (
     <div className={theme}>
-      <div className="min-h-screen bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text">
+      <div className="app-shell">
         <AuthProvider>
           <Router>
           <Routes>
@@ -27,7 +27,7 @@ function App() {
                 <PrivateRoute>
                   <>
                     <Header />
-                    <main className="h-[calc(100vh-54px)]">
+                    <main className="app-main">
                       <Routes>
                         <Route path="/" element={<CalendarView />} />
                         <Route path="/gantt" element={<GanttView />} />

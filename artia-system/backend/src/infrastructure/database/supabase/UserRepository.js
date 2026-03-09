@@ -31,6 +31,16 @@ export class UserRepository {
     return data ? this.toDomain(data) : null;
   }
 
+  async findAll() {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('email', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map((row) => this.toDomain(row));
+  }
+
   async create({ email, name, passwordHash, factorialEmployeeId, artiaUserId, artiaToken }) {
     const { data, error } = await supabase
       .from('users')
@@ -99,6 +109,53 @@ export class UserRepository {
 
     if (error) throw error;
     return true;
+  }
+
+  async updatePassword(userId, passwordHash) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        password_hash: passwordHash,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return this.toDomain(data);
+  }
+
+  async updateIdentity(userId, updates = {}) {
+    const payload = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (updates.name !== undefined) {
+      payload.name = updates.name;
+    }
+
+    if (updates.factorialEmployeeId !== undefined) {
+      payload.factorial_employee_id = updates.factorialEmployeeId;
+    }
+
+    if (updates.artiaUserId !== undefined) {
+      payload.artia_user_id = updates.artiaUserId;
+    }
+
+    if (updates.artiaToken !== undefined) {
+      payload.artia_token = updates.artiaToken;
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(payload)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return this.toDomain(data);
   }
 
   toDomain(row) {

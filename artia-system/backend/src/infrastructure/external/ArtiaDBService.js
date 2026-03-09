@@ -1,6 +1,11 @@
 import { artiaDB } from '../database/mysql/ArtiaDBConnection.js';
 import bcrypt from 'bcryptjs';
 
+function normalizeProjectNumber(number, id) {
+  const normalized = String(number || '').trim();
+  return normalized || `SEM-NUMERO-${id}`;
+}
+
 export class ArtiaDBService {
   /**
    * Autentica usuário via banco MySQL do Artia
@@ -100,7 +105,7 @@ export class ArtiaDBService {
           status as active,
           created_at
         FROM organization_9115_projects_v2 
-        WHERE status = 1 AND object_type = 'project'
+        WHERE object_type = 'project'
           ${hasSearch ? 'AND (project_number LIKE ? OR name LIKE ?)' : ''}
         ORDER BY name`,
         hasSearch ? [`%${searchTerm}%`, `%${searchTerm}%`] : []
@@ -108,7 +113,7 @@ export class ArtiaDBService {
 
       return projects.map(p => ({
         id: p.id,
-        number: p.number,
+        number: normalizeProjectNumber(p.number, p.id),
         name: p.name,
         active: p.active,
         createdAt: p.created_at
@@ -207,7 +212,7 @@ export class ArtiaDBService {
 
       return {
         id: project.id,
-        number: project.number,
+        number: normalizeProjectNumber(project.number, project.id),
         name: project.name,
         active: project.active,
         createdAt: project.created_at

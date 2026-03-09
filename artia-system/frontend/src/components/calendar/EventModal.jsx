@@ -286,7 +286,7 @@ export default function EventModal({ isOpen, onClose, event, draft }) {
                 />
                 <datalist id="projectOptions">
                   {projects.map((project) => (
-                    <option key={project.id} value={`${project.number} - ${project.name}`} />
+                    <option key={project.id} value={`${project.number} - ${project.name}${project.active ? '' : ' [Inativo]'}`} />
                   ))}
                 </datalist>
               </div>
@@ -379,8 +379,8 @@ export default function EventModal({ isOpen, onClose, event, draft }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 bg-[#071221]/90 px-7 py-5">
-            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-              {selectedProject ? `Projeto: ${selectedProject.number} · ${selectedProject.name}` : 'Selecione um projeto para ativar o preenchimento automático'}
+            <div className={`rounded-full border px-4 py-2 text-sm ${selectedProject?.active === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-slate-300'}`}>
+              {selectedProject ? `Projeto: ${selectedProject.number} · ${selectedProject.name}${selectedProject.active === false ? ' · Inativo no catálogo' : ''}` : 'Selecione um projeto para ativar o preenchimento automático'}
             </div>
 
             <div className="flex items-center gap-3">

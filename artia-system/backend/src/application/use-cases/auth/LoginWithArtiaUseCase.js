@@ -21,8 +21,11 @@ export class LoginWithArtiaUseCase {
         artiaToken: artiaAuth.token
       });
     } else {
-      // Atualiza token Artia do usuário
-      await this.userRepository.updateArtiaToken(user.id, artiaAuth.token);
+      user = await this.userRepository.updateIdentity(user.id, {
+        name: artiaAuth.user.name,
+        artiaUserId: artiaAuth.user.artiaUserId,
+        artiaToken: artiaAuth.token
+      });
     }
 
     // 3. Gera JWT próprio do sistema (para autenticação nas rotas)
@@ -30,7 +33,8 @@ export class LoginWithArtiaUseCase {
       {
         userId: user.id,
         email: user.email,
-        artiaUserId: user.artiaUserId
+        artiaUserId: user.artiaUserId,
+        factorialEmployeeId: user.factorialEmployeeId
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -43,7 +47,8 @@ export class LoginWithArtiaUseCase {
         id: user.id,
         email: user.email,
         name: user.name,
-        artiaUserId: user.artiaUserId
+        artiaUserId: user.artiaUserId,
+        factorialEmployeeId: user.factorialEmployeeId
       }
     };
   }

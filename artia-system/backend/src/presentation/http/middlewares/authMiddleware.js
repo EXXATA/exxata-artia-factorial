@@ -41,7 +41,8 @@ export function authMiddleware(req, res, next) {
         userId: decoded.userId,
         id: decoded.userId,
         email: decoded.email,
-        artiaUserId: decoded.artiaUserId
+        artiaUserId: decoded.artiaUserId,
+        factorialEmployeeId: decoded.factorialEmployeeId
       };
 
       return next();

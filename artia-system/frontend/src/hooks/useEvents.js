@@ -16,6 +16,7 @@ export function useCreateEvent() {
     mutationFn: eventService.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento criado com sucesso!');
     },
     onError: (error) => {
@@ -31,6 +32,7 @@ export function useUpdateEvent() {
     mutationFn: ({ id, data }) => eventService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento atualizado com sucesso!');
     },
     onError: (error) => {
@@ -46,6 +48,7 @@ export function useDeleteEvent() {
     mutationFn: eventService.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento deletado com sucesso!');
     },
     onError: (error) => {
@@ -61,6 +64,7 @@ export function useMoveEvent() {
     mutationFn: ({ id, moveData }) => eventService.move(id, moveData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento movido com sucesso!');
     },
     onError: (error) => {
@@ -76,6 +80,7 @@ export function useImportLegacyEvents() {
     mutationFn: ({ file, mode }) => eventService.importLegacy(file, mode),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       const imported = response?.data?.imported ?? 0;
       toast.success(`${imported} eventos importados com sucesso!`);
     },

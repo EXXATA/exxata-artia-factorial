@@ -101,7 +101,11 @@ export class FactorialService {
         }
       });
 
-      const shifts = response.data?.data || response.data || [];
+      const allShifts = response.data?.data || response.data || [];
+      
+      // IMPORTANTE: A API do Factorial não respeita o filtro employee_id no query parameter
+      // Por isso, filtramos localmente para garantir que apenas shifts do employeeId correto sejam retornados
+      const shifts = allShifts.filter(shift => String(shift.employee_id) === String(employeeId));
       
       return shifts.map(shift => {
         // Factorial retorna date + clock_in/out como strings de hora

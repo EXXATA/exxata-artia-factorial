@@ -16,6 +16,188 @@ body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  background: #f5f7fb;
+  color: #0f172a;
+}
+
+.dark body {
+  background: #08101f;
+  color: #e2e8f0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer components {
+  .app-shell {
+    @apply min-h-screen bg-light-bg text-light-text dark:bg-[#08101f] dark:text-dark-text;
+  }
+
+  .app-main {
+    @apply h-[calc(100vh-126px)] overflow-hidden bg-[#f5f7fb] dark:bg-[#08101f];
+  }
+
+  .app-header-surface {
+    @apply border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#0f172a]/95;
+  }
+
+  .app-header-row {
+    @apply flex flex-wrap items-center justify-between gap-3 px-4 md:px-6;
+  }
+
+  .app-brand-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300;
+  }
+
+  .app-action-button {
+    @apply inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10;
+  }
+
+  .app-tab-nav {
+    @apply flex flex-wrap items-center gap-1 border-t border-slate-200/80 px-2 md:px-4 dark:border-white/10;
+  }
+
+  .app-tab {
+    @apply relative inline-flex items-center gap-2 rounded-t-xl border-b-2 border-transparent px-4 py-3 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-100;
+  }
+
+  .app-tab-active {
+    @apply border-primary bg-primary/5 text-primary dark:bg-primary/10 dark:text-primary-light;
+  }
+
+  .view-shell {
+    @apply flex h-full flex-col gap-4 p-4 md:p-6;
+  }
+
+  .ui-toolbar {
+    @apply rounded-2xl border border-slate-200/80 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0f172a];
+  }
+
+  .ui-toolbar-row {
+    @apply flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between;
+  }
+
+  .ui-toolbar-group {
+    @apply flex flex-wrap items-center gap-3 text-sm;
+  }
+
+  .ui-surface {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/10 dark:bg-[#0f172a];
+  }
+
+  .ui-input {
+    @apply rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/10 dark:border-white/10 dark:bg-[#111827] dark:text-slate-100 dark:placeholder:text-slate-500;
+  }
+
+  .ui-label {
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400;
+  }
+
+  .ui-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300;
+  }
+
+  .ui-chip-accent {
+    @apply border-primary/20 bg-primary/5 text-primary dark:bg-primary/10 dark:text-primary-light;
+  }
+
+  .ui-chip-success {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-100;
+  }
+
+  .ui-chip-warning {
+    @apply border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100;
+  }
+
+  .ui-chip-danger {
+    @apply border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-100;
+  }
+
+  .ui-chip-violet {
+    @apply border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-100;
+  }
+
+  .ui-banner-danger {
+    @apply rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-red-100 px-4 py-4 text-red-800 shadow-sm dark:border-red-400/20 dark:from-red-500/10 dark:to-red-500/5 dark:text-red-100;
+  }
+
+  .ui-banner-warning {
+    @apply rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100 px-4 py-4 text-amber-800 shadow-sm dark:border-amber-400/20 dark:from-amber-500/10 dark:to-amber-500/5 dark:text-amber-100;
+  }
+
+  .ui-banner-success {
+    @apply rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 px-4 py-4 text-emerald-800 shadow-sm dark:border-emerald-400/20 dark:from-emerald-500/10 dark:to-emerald-500/5 dark:text-emerald-100;
+  }
+
+  .ui-kpi-grid {
+    @apply grid gap-3 md:grid-cols-2 xl:grid-cols-6;
+  }
+
+  .ui-kpi-card {
+    @apply rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#111827];
+  }
+
+  .ui-kpi-card-accent {
+    @apply border-primary/20 bg-primary/5 dark:bg-primary/10;
+  }
+
+  .ui-kpi-card-danger {
+    @apply border-red-200 bg-red-50 dark:border-red-400/20 dark:bg-red-500/10;
+  }
+
+  .ui-kpi-card-warning {
+    @apply border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-500/10;
+  }
+
+  .ui-kpi-card-violet {
+    @apply border-violet-200 bg-violet-50 dark:border-violet-400/20 dark:bg-violet-500/10;
+  }
+
+  .ui-kpi-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400;
+  }
+
+  .ui-kpi-value {
+    @apply mt-2 text-2xl font-semibold text-slate-900 dark:text-white;
+  }
+
+  .ui-table-shell {
+    @apply min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/10 dark:bg-[#0f172a];
+  }
+
+  .ui-table-scroll {
+    @apply h-full overflow-auto scrollbar-thin;
+  }
+
+  .ui-table-head {
+    @apply sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-left text-[11px] uppercase tracking-[0.12em] text-slate-500 backdrop-blur dark:border-white/10 dark:bg-[#111827]/95 dark:text-slate-400;
+  }
+
+  .ui-table-row {
+    @apply border-b border-slate-100 transition hover:bg-slate-50/80 dark:border-white/5 dark:hover:bg-white/5;
+  }
+
+  .ui-empty-state {
+    @apply rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400;
+  }
+
+  .ui-title {
+    @apply text-lg font-semibold text-slate-900 dark:text-white;
+  }
+
+  .ui-subtitle {
+    @apply mt-1 text-sm text-slate-500 dark:text-slate-400;
+  }
+
+  .ui-muted {
+    @apply text-slate-500 dark:text-slate-400;
+  }
+
+  .ui-mono {
+    @apply font-mono tabular-nums;
+  }
 }
 
 @layer utilities {

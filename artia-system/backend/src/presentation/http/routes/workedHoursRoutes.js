@@ -6,6 +6,10 @@ export function createWorkedHoursRoutes(workedHoursController, authMiddleware) {
   // Todas as rotas requerem autenticação
   router.use(authMiddleware);
 
+  router.get('/range', (req, res, next) => 
+    workedHoursController.getRangeComparison(req, res, next)
+  );
+
   router.get('/daily', (req, res, next) => 
     workedHoursController.getDailyComparison(req, res, next)
   );

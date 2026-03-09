@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEvents, useMoveEvent } from '../../hooks/useEvents';
+import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
 import EventModal from './EventModal';
+import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
 import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getDefaultDraftFromSlot, getDraftFromRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
 import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../utils/artiaSyncUtils';
 
 const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+function formatHoursFromComparison(hours) {
+  return formatWorkedTime(Math.round((Number(hours) || 0) * 60));
+}
 
 export default function CalendarView() {
   const [weekStart, setWeekStart] = useState(startOfWeekMonday(new Date()));
@@ -22,10 +28,15 @@ export default function CalendarView() {
 
   const { data: eventsData, isLoading } = useEvents({ startDate, endDate });
   const { data: projectsData, isLoading: projectsLoading } = useProjects();
+  const { data: comparisonData } = useWorkedHoursComparison({ startDate, endDate, enabled: Boolean(startDate && endDate) });
   const moveMutation = useMoveEvent();
 
   const events = eventsData?.data || [];
   const projects = projectsData?.data || [];
+  const dailyDetailsByDate = useMemo(
+    () => Object.fromEntries((comparisonData?.dailyDetails || []).map((detail) => [detail.date, detail])),
+    [comparisonData]
+  );
   const minutesByDay = useMemo(() => getEventMinutesByDay(events), [events]);
   const syncBreakdownByDay = useMemo(() => getEventSyncBreakdownByDay(events), [events]);
   const slotCount = ((CALENDAR_END_HOUR - CALENDAR_START_HOUR) * 60) / SLOT_MINUTES;
@@ -314,7 +325,7 @@ export default function CalendarView() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="rounded-2xl border border-white/10 bg-[#091321] px-6 py-5 text-slate-200 shadow-lg">
+        <div className="ui-empty-state max-w-md px-6 py-5">
           Carregando calendário...
         </div>
       </div>
@@ -322,49 +333,60 @@ export default function CalendarView() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,25,38,0.96),rgba(7,12,20,0.98))] px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.35)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={handlePrevWeek} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10">
+    <div className="view-shell">
+      <div className="ui-toolbar">
+        <div className="ui-toolbar-row">
+          <div className="ui-toolbar-group">
+          <button onClick={handlePrevWeek} className="app-action-button">
             Sem. anterior
           </button>
-          <button onClick={handleToday} className="rounded-xl border border-primary/30 bg-primary/15 px-4 py-2 text-sm font-semibold text-primary-light transition hover:bg-primary/20">
+          <button onClick={handleToday} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark">
             Hoje
           </button>
-          <button onClick={handleNextWeek} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10">
+          <button onClick={handleNextWeek} className="app-action-button">
             Prox. semana
           </button>
-        </div>
+          </div>
 
-        <div className="rounded-2xl border border-white/10 bg-[#111a27] px-5 py-2.5 text-sm font-semibold tracking-wide text-slate-100">
-          {formatWeekRangeLabel(weekStart)}
-        </div>
+          <div className="ui-chip ui-chip-accent text-sm font-semibold">
+            {formatWeekRangeLabel(weekStart)}
+          </div>
 
-        <div className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm ${projectsLoading ? 'border-amber-400/30 bg-amber-500/10 text-amber-100' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'}`}>
-          <span className={`h-2.5 w-2.5 rounded-full ${projectsLoading ? 'bg-amber-300' : 'bg-emerald-300'}`} />
-          <span>{projectsLoading ? 'Base Artia MySQL carregando' : `Base Artia MySQL · ${projects.length} projetos`}</span>
+          <div className={`ui-chip ${projectsLoading ? 'ui-chip-warning' : 'ui-chip-success'}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${projectsLoading ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+            <span>{projectsLoading ? 'Base Artia MySQL carregando' : `Base Artia MySQL · ${projects.length} projetos`}</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-slate-400">
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Arraste na grade para criar</span>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Arraste o bloco para mover</span>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Arraste as bordas para redimensionar</span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />Sincronizado</span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />Marcado manualmente</span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
+      <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
+        <span className="ui-chip">Arraste na grade para criar</span>
+        <span className="ui-chip">Arraste o bloco para mover</span>
+        <span className="ui-chip">Arraste as bordas para redimensionar</span>
+        <span className="ui-chip ui-chip-success"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Sincronizado</span>
+        <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Marcado manualmente</span>
+        <span className="ui-chip"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
+        <span className="ui-chip ui-chip-violet"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />Somente Artia</span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,15,24,0.98),rgba(5,9,15,1))] shadow-[0_18px_80px_rgba(0,0,0,0.35)]">
-        <div className="h-full overflow-auto scrollbar-thin">
+      <WorkedHoursRangePanel
+        startDate={startDate}
+        endDate={endDate}
+        title="Conciliação diária da semana"
+        subtitle="Validação dia a dia entre Factorial, sistema e Artia na semana visível"
+      />
+
+      <div className="ui-table-shell">
+        <div className="ui-table-scroll">
           <div className="min-w-[1120px]">
-            <div className="grid grid-cols-[88px_repeat(7,minmax(0,1fr))] border-b border-white/10 bg-[#0f1724]">
-              <div className="border-r border-white/10 px-3 py-4 text-xs uppercase tracking-[0.18em] text-slate-500">
+            <div className="grid grid-cols-[88px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#111827]">
+              <div className="border-r border-slate-200 px-3 py-4 text-xs uppercase tracking-[0.18em] text-slate-500 dark:border-white/10 dark:text-slate-400">
                 Horários
               </div>
               {weekDays.map((day, index) => {
                 const dayIso = formatDateISO(day);
                 const dayMinutes = minutesByDay[dayIso] || 0;
+                const dayComparison = dailyDetailsByDate[dayIso] || null;
                 const syncBreakdown = syncBreakdownByDay[dayIso] || {
                   totalMinutes: 0,
                   syncedMinutes: 0,
@@ -373,22 +395,30 @@ export default function CalendarView() {
                 };
 
                 return (
-                  <div key={dayIso} className={`border-r border-white/10 px-3 py-3 ${isToday(day) ? 'bg-primary/10' : ''}`}>
-                    <div className="text-xs text-slate-500">{DAY_NAMES[index]}</div>
-                    <div className="mt-1 text-lg font-semibold text-white">{day.toLocaleDateString('pt-BR')}</div>
+                  <div key={dayIso} className={`border-r border-slate-200 px-3 py-3 dark:border-white/10 ${isToday(day) ? 'bg-primary/5' : ''}`}>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{DAY_NAMES[index]}</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{day.toLocaleDateString('pt-BR')}</div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {isToday(day) && <span className="rounded-full border border-primary/30 bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary-light">Hoje</span>}
-                      <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
-                        Tempo Trabalhado: <span className="font-semibold text-emerald-200">{formatWorkedTime(dayMinutes)}</span>
+                      {isToday(day) && <span className="ui-chip ui-chip-accent">Hoje</span>}
+                      <span className="ui-chip ui-chip-success">
+                        Tempo Trabalhado: <span className="font-semibold">{formatWorkedTime(dayMinutes)}</span>
                       </span>
-                      <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
-                        Artia: <span className="font-semibold text-emerald-200">{formatWorkedTime(syncBreakdown.syncedMinutes)}</span>
+                      <span className="ui-chip">
+                        Factorial: <span className="font-semibold text-slate-900 dark:text-white">{formatHoursFromComparison(dayComparison?.factorialHours)}</span>
+                      </span>
+                      <span className="ui-chip ui-chip-success">
+                        Artia: <span className="font-semibold">{formatWorkedTime(syncBreakdown.syncedMinutes)}</span>
                       </span>
                       {syncBreakdown.pendingMinutes > 0 && (
-                        <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
-                          Pendente: <span className="font-semibold text-sky-200">{formatWorkedTime(syncBreakdown.pendingMinutes)}</span>
+                        <span className="ui-chip">
+                          Pendente: <span className="font-semibold text-slate-900 dark:text-white">{formatWorkedTime(syncBreakdown.pendingMinutes)}</span>
                         </span>
                       )}
+                      {dayComparison?.remoteOnlyArtiaEntries?.length ? (
+                        <span className="ui-chip ui-chip-violet">
+                          Só Artia: <span className="font-semibold">{dayComparison.remoteOnlyArtiaEntries.length}</span>
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -396,13 +426,13 @@ export default function CalendarView() {
             </div>
 
             <div className="flex">
-              <div className="w-[88px] shrink-0 border-r border-white/10 bg-[#0d141f]">
+              <div className="w-[88px] shrink-0 border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#0c1423]">
                 {slots.map((slotIndex) => {
                   const minutes = CALENDAR_START_HOUR * 60 + slotIndex * SLOT_MINUTES;
                   const hourLabel = minutes % 60 === 0 ? `${String(Math.floor(minutes / 60)).padStart(2, '0')}:00` : '';
 
                   return (
-                    <div key={slotIndex} className="border-b border-white/5 px-3 py-1 text-xs text-slate-500" style={{ height: ROW_HEIGHT }}>
+                    <div key={slotIndex} className="border-b border-slate-200 px-3 py-1 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400" style={{ height: ROW_HEIGHT }}>
                       {hourLabel}
                     </div>
                   );
@@ -412,8 +442,12 @@ export default function CalendarView() {
               <div className="grid flex-1 grid-cols-7">
                 {weekDays.map((day) => {
                   const dayIso = formatDateISO(day);
+                  const dayComparison = dailyDetailsByDate[dayIso] || null;
                   const dayEvents = events
                     .filter((event) => event.day === dayIso)
+                    .sort((a, b) => new Date(a.start) - new Date(b.start));
+                  const remoteOnlyEntries = (dayComparison?.remoteOnlyArtiaEntries || [])
+                    .filter((entry) => entry.start && entry.end)
                     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
                   return (
@@ -427,19 +461,42 @@ export default function CalendarView() {
                       data-day-column="true"
                       data-day-iso={dayIso}
                       onMouseDown={(event) => handleGridMouseDown(dayIso, event)}
-                      className={`relative border-r border-white/10 ${isToday(day) ? 'bg-primary/5' : 'bg-transparent'} ${selection?.dayIso === dayIso ? 'cursor-row-resize' : interaction?.dayIso === dayIso ? 'cursor-grabbing' : 'cursor-cell'}`}
+                      className={`relative border-r border-slate-200 bg-white dark:border-white/10 dark:bg-transparent ${isToday(day) ? 'bg-primary/5 dark:bg-primary/5' : ''} ${selection?.dayIso === dayIso ? 'cursor-row-resize' : interaction?.dayIso === dayIso ? 'cursor-grabbing' : 'cursor-cell'}`}
                       style={{ height: slotCount * ROW_HEIGHT }}
                     >
                       {slots.map((slotIndex) => (
                         <div
                           key={`${dayIso}-${slotIndex}`}
-                          className="pointer-events-none absolute left-0 right-0 border-b border-white/5 transition"
+                          className="pointer-events-none absolute left-0 right-0 border-b border-slate-100 transition dark:border-white/5"
                           style={{ top: slotIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
                         />
                       ))}
 
                       {renderSelectionPreview(dayIso)}
                       {renderInteractionPreview(dayIso)}
+
+                      {remoteOnlyEntries.map((entry) => {
+                        const position = getEventPosition({ start: entry.start, end: entry.end });
+
+                        return (
+                          <div
+                            key={`artia-only-${entry.id}`}
+                            className="absolute left-1.5 right-1.5 z-0 overflow-hidden rounded-2xl border border-violet-300/40 bg-[linear-gradient(180deg,rgba(139,92,246,0.1),rgba(139,92,246,0.25))] dark:bg-[linear-gradient(180deg,rgba(139,92,246,0.15),rgba(49,46,129,0.5))] px-2 py-2 text-left shadow-sm opacity-90 cursor-not-allowed"
+                            style={{ top: position.top + 2, height: position.height }}
+                            title="Lançamento remoto do Artia (não editável)"
+                          >
+                            <div className="inline-flex rounded-full bg-violet-600/10 dark:bg-black/30 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:text-violet-100 shadow-sm border border-violet-500/20">
+                              {extractTimeValue(entry.start)} – {extractTimeValue(entry.end)}
+                            </div>
+                            <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">{entry.projectLabel || entry.project || 'Projeto Artia'}</div>
+                            <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">{entry.activity || 'Atividade Artia'}</div>
+                            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-violet-500"></span>
+                              Lançado no Artia
+                            </div>
+                          </div>
+                        );
+                      })}
 
                       {dayEvents.map((event) => {
                         if (interaction?.eventId === event.id) {

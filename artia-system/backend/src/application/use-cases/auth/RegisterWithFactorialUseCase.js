@@ -7,6 +7,30 @@ export class RegisterWithFactorialUseCase {
     this.userRepository = userRepository;
   }
 
+  buildAuthResult(user) {
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        factorialEmployeeId: user.factorialEmployeeId,
+        artiaUserId: user.artiaUserId
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+    );
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        factorialEmployeeId: user.factorialEmployeeId,
+        artiaUserId: user.artiaUserId
+      }
+    };
+  }
+
   async execute(email, password) {
     // 1. Validar entrada
     if (!email || !password) {
@@ -32,7 +56,22 @@ export class RegisterWithFactorialUseCase {
     const existingUser = await this.userRepository.findByEmail(email);
 
     if (existingUser) {
-      throw new Error('Usuário já cadastrado. Faça login.');
+      if (existingUser.passwordHash) {
+        throw new Error('Usuário já cadastrado. Faça login.');
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const claimedUser = await this.userRepository.updateIdentity(existingUser.id, {
+        name: employee.fullName,
+        factorialEmployeeId: employee.id.toString()
+      });
+
+      const completedUser = await this.userRepository.updatePassword(existingUser.id, passwordHash);
+      return this.buildAuthResult({
+        ...claimedUser,
+        ...completedUser,
+        passwordHash
+      });
     }
 
     // 4. Criar hash bcrypt da senha
@@ -47,25 +86,6 @@ export class RegisterWithFactorialUseCase {
       factorialEmployeeId: employee.id.toString()
     });
 
-    // 6. Gerar JWT próprio do sistema
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        factorialEmployeeId: user.factorialEmployeeId
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-    );
-
-    return {
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        factorialEmployeeId: user.factorialEmployeeId
-      }
-    };
+    return this.buildAuthResult(user);
   }
 }
