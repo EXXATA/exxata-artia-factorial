@@ -105,7 +105,7 @@ export class ArtiaDBService {
           status as active,
           created_at
         FROM organization_9115_projects_v2 
-        WHERE object_type = 'project'
+        WHERE LOWER(object_type) = 'project'
           ${hasSearch ? 'AND (project_number LIKE ? OR name LIKE ?)' : ''}
         ORDER BY name`,
         hasSearch ? [`%${searchTerm}%`, `%${searchTerm}%`] : []
@@ -200,7 +200,7 @@ export class ArtiaDBService {
           status as active,
           created_at
         FROM organization_9115_projects_v2 
-        WHERE id = ? AND object_type = 'project'`,
+        WHERE id = ? AND LOWER(object_type) = 'project'`,
         [projectId]
       );
 

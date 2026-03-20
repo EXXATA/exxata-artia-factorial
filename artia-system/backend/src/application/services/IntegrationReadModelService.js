@@ -56,7 +56,7 @@ export class IntegrationReadModelService {
       lastSyncedAt: syncedAt,
       expiresAt: this.snapshotRepository.buildExpiry(syncedAt, this.projectCatalogTtlHours),
       metadata: {
-        projectCount: refreshed.length,
+        projectCount: projects.length,
         source: 'artia_mysql'
       }
     });

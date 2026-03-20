@@ -2,6 +2,7 @@ import { artiaDB } from '../database/mysql/ArtiaDBConnection.js';
 
 const USER_TABLE = 'organization_9115_organization_users_v2';
 const SOURCE_CACHE_KEY = 'artia-project-access:source';
+const USER_SCHEMA_CACHE_KEY = 'artia-project-access:user-schema';
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_ACCESS_CACHE_TTL_MS = 5 * 60 * 1000;
 const POSITIVE_TABLE_KEYWORDS = [
@@ -42,6 +43,7 @@ const NEGATIVE_TABLE_KEYWORDS = [
   'finances'
 ];
 const ACTIVE_TEXT_VALUES = ['1', 'true', 'active', 'ativo', 'enabled'];
+const PROJECT_DATASET_KEYWORDS = ['projects', 'project'];
 
 function normalizeText(value) {
   return String(value || '')
@@ -102,6 +104,25 @@ export class ArtiaProjectAccessService {
   }
 
   buildSourceFromColumns(tableName, columns) {
+    const normalizedTableName = normalizeText(tableName);
+    const participantListColumn = this.pickColumn(columns, [
+      'group_participants',
+      'participants',
+      'participants_group',
+      'group_members',
+      'members'
+    ]);
+    const isProjectDataset = PROJECT_DATASET_KEYWORDS.some((keyword) => normalizedTableName.includes(keyword));
+    const defaultProjectIdColumn = this.pickColumn(columns, [
+      'folder_last_project_id',
+      'project_id',
+      'parent_project_id',
+      'parent_project',
+      'folder_id',
+      'parent_id'
+    ]);
+    const rowIdColumn = this.pickColumn(columns, ['id']);
+
     return {
       tableName,
       userIdColumn: this.pickColumn(columns, [
@@ -124,14 +145,10 @@ export class ArtiaProjectAccessService {
         'responsible_email',
         'email'
       ]),
-      projectIdColumn: this.pickColumn(columns, [
-        'folder_last_project_id',
-        'project_id',
-        'parent_project_id',
-        'parent_project',
-        'folder_id',
-        'parent_id'
-      ]),
+      participantListColumn,
+      projectIdColumn: (participantListColumn || isProjectDataset) && rowIdColumn
+        ? rowIdColumn
+        : defaultProjectIdColumn,
       activeColumn: this.pickColumn(columns, [
         'active',
         'status',
@@ -143,7 +160,14 @@ export class ArtiaProjectAccessService {
         'role',
         'permission',
         'access_level'
-      ])
+      ]),
+      applyActiveFilter: !participantListColumn && (
+        normalizedTableName.includes('member')
+        || normalizedTableName.includes('permission')
+        || normalizedTableName.includes('access')
+        || normalizedTableName.includes('allocation')
+        || normalizedTableName.includes('relation')
+      )
     };
   }
 
@@ -157,6 +181,10 @@ export class ArtiaProjectAccessService {
 
     if (source.userIdColumn || source.userEmailColumn) {
       score += 5;
+    }
+
+    if (source.participantListColumn) {
+      score += 9;
     }
 
     if (source.activeColumn) {
@@ -187,6 +215,14 @@ export class ArtiaProjectAccessService {
       score += 4;
     }
 
+    if (tableName.includes('project') && source.participantListColumn) {
+      score += 8;
+    }
+
+    if (tableName.includes('project') && source.projectIdColumn === 'id') {
+      score += 2;
+    }
+
     if (tableName.includes('organization users')) {
       score -= 4;
     }
@@ -204,9 +240,11 @@ export class ArtiaProjectAccessService {
       tableName,
       userIdColumn: process.env.ARTIA_DB_PROJECT_ACCESS_USER_ID_COLUMN || null,
       userEmailColumn: process.env.ARTIA_DB_PROJECT_ACCESS_USER_EMAIL_COLUMN || null,
+      participantListColumn: process.env.ARTIA_DB_PROJECT_ACCESS_PARTICIPANT_LIST_COLUMN || null,
       projectIdColumn: process.env.ARTIA_DB_PROJECT_ACCESS_PROJECT_ID_COLUMN || null,
       activeColumn: process.env.ARTIA_DB_PROJECT_ACCESS_ACTIVE_COLUMN || null,
-      roleColumn: process.env.ARTIA_DB_PROJECT_ACCESS_ROLE_COLUMN || null
+      roleColumn: process.env.ARTIA_DB_PROJECT_ACCESS_ROLE_COLUMN || null,
+      applyActiveFilter: process.env.ARTIA_DB_PROJECT_ACCESS_APPLY_ACTIVE_FILTER === 'true'
     };
   }
 
@@ -222,12 +260,37 @@ export class ArtiaProjectAccessService {
     return this.inMemoryCache.remember(cacheKey, producer, ttlMs);
   }
 
+  async discoverUserTableSchema({ forceRefresh = false } = {}) {
+    return this.getCachedValue(
+      USER_SCHEMA_CACHE_KEY,
+      async () => {
+        const rows = await artiaDB.query(
+          `SELECT column_name AS columnName
+           FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = ?
+           ORDER BY ordinal_position`,
+          [USER_TABLE]
+        );
+        const columns = rows.map((row) => row.columnName);
+
+        return {
+          idColumn: this.pickColumn(columns, ['id']) || 'id',
+          emailColumn: this.pickColumn(columns, ['user_email', 'email']),
+          nameColumn: this.pickColumn(columns, ['user_name', 'name']),
+          activeColumn: this.pickColumn(columns, ['status', 'organization_user_state', 'state', 'active'])
+        };
+      },
+      SOURCE_CACHE_TTL_MS,
+      forceRefresh
+    );
+  }
+
   async discoverProjectAccessSource({ forceRefresh = false } = {}) {
     return this.getCachedValue(
       SOURCE_CACHE_KEY,
       async () => {
         const configured = this.getConfiguredSource();
-        if (configured?.tableName && configured?.projectIdColumn && (configured.userIdColumn || configured.userEmailColumn)) {
+        if (configured?.tableName && configured?.projectIdColumn && (configured.userIdColumn || configured.userEmailColumn || configured.participantListColumn)) {
           return configured;
         }
 
@@ -256,7 +319,7 @@ export class ArtiaProjectAccessService {
             };
           })
           .filter((candidate) => candidate.source.projectIdColumn)
-          .filter((candidate) => candidate.source.userIdColumn || candidate.source.userEmailColumn)
+          .filter((candidate) => candidate.source.userIdColumn || candidate.source.userEmailColumn || candidate.source.participantListColumn)
           .filter((candidate) => candidate.score >= 8)
           .sort((left, right) => right.score - left.score);
 
@@ -270,45 +333,75 @@ export class ArtiaProjectAccessService {
   async resolveArtiaIdentity(user) {
     const artiaUserId = String(user?.artiaUserId || '').trim();
     const email = String(user?.email || '').trim().toLowerCase();
+    const name = String(user?.name || '').trim();
+    const userSchema = await this.discoverUserTableSchema();
 
-    if (artiaUserId) {
-      return {
-        artiaUserId,
-        email
-      };
-    }
-
-    if (!email) {
+    if (!artiaUserId && !email) {
       return {
         artiaUserId: null,
-        email: null
+        email: null,
+        name: name || null
       };
     }
 
     try {
+      const selectedColumns = [
+        `${this.escapeIdentifier(userSchema.idColumn)} AS id`
+      ];
+      if (userSchema.emailColumn) {
+        selectedColumns.push(`${this.escapeIdentifier(userSchema.emailColumn)} AS email`);
+      }
+      if (userSchema.nameColumn) {
+        selectedColumns.push(`${this.escapeIdentifier(userSchema.nameColumn)} AS name`);
+      }
+
+      const conditions = [];
+      const params = [];
+      if (artiaUserId) {
+        conditions.push(`${this.escapeIdentifier(userSchema.idColumn)} = ?`);
+        params.push(artiaUserId);
+      }
+      if (email && userSchema.emailColumn) {
+        conditions.push(`LOWER(CAST(${this.escapeIdentifier(userSchema.emailColumn)} AS CHAR)) = ?`);
+        params.push(email);
+      }
+
+      const whereClauses = [];
+      if (conditions.length > 0) {
+        whereClauses.push(`(${conditions.join(' OR ')})`);
+      }
+
+      const activeCondition = this.buildActiveCondition(userSchema.activeColumn);
+      if (activeCondition) {
+        whereClauses.push(activeCondition);
+      }
+
       const users = await artiaDB.query(
-        `SELECT id, user_email AS email
-         FROM ${USER_TABLE}
-         WHERE user_email = ? AND status = 1
+        `SELECT ${selectedColumns.join(', ')}
+         FROM ${this.escapeIdentifier(USER_TABLE)}
+         ${whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''}
          LIMIT 1`,
-        [email]
+        params
       );
 
       if (!users.length) {
         return {
-          artiaUserId: null,
-          email
+          artiaUserId: artiaUserId || null,
+          email: email || null,
+          name: name || null
         };
       }
 
       return {
         artiaUserId: String(users[0].id),
-        email: String(users[0].email || email).trim().toLowerCase()
+        email: String(users[0].email || email).trim().toLowerCase(),
+        name: String(users[0].name || name).trim() || null
       };
     } catch (error) {
       return {
-        artiaUserId: null,
-        email
+        artiaUserId: artiaUserId || null,
+        email: email || null,
+        name: name || null
       };
     }
   }
@@ -328,11 +421,18 @@ export class ArtiaProjectAccessService {
       params.push(identity.email);
     }
 
+    if (source.participantListColumn && identity.name) {
+      conditions.push(`CAST(${this.escapeIdentifier(source.participantListColumn)} AS CHAR) LIKE ?`);
+      params.push(`%${identity.name}%`);
+    }
+
     if (conditions.length === 0) {
       return null;
     }
 
-    const activeCondition = this.buildActiveCondition(source.activeColumn);
+    const activeCondition = source.applyActiveFilter
+      ? this.buildActiveCondition(source.activeColumn)
+      : '';
     const whereClauses = [`(${conditions.join(' OR ')})`];
 
     if (activeCondition) {

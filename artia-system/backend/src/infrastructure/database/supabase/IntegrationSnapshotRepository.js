@@ -6,7 +6,103 @@ function addDays(dateString, days) {
   return date.toISOString().split('T')[0];
 }
 
+const PAGE_SIZE = 1000;
+const INSERT_CHUNK_SIZE = 500;
+const PROJECT_ID_FILTER_CHUNK_SIZE = 200;
+
 export class IntegrationSnapshotRepository {
+  async fetchAllPages(buildQuery, pageSize = PAGE_SIZE) {
+    const rows = [];
+    let from = 0;
+
+    while (true) {
+      const { data, error } = await buildQuery(from, from + pageSize - 1);
+
+      if (error) {
+        throw error;
+      }
+
+      const page = data || [];
+      rows.push(...page);
+
+      if (page.length < pageSize) {
+        break;
+      }
+
+      from += pageSize;
+    }
+
+    return rows;
+  }
+
+  async insertInChunks(tableName, rows, chunkSize = INSERT_CHUNK_SIZE) {
+    for (let index = 0; index < rows.length; index += chunkSize) {
+      const chunk = rows.slice(index, index + chunkSize);
+      const { error } = await supabase
+        .from(tableName)
+        .insert(chunk);
+
+      if (error) {
+        throw error;
+      }
+    }
+  }
+
+  async upsertInChunks(tableName, rows, { onConflict, chunkSize = INSERT_CHUNK_SIZE }) {
+    for (let index = 0; index < rows.length; index += chunkSize) {
+      const chunk = rows.slice(index, index + chunkSize);
+      const { error } = await supabase
+        .from(tableName)
+        .upsert(chunk, { onConflict });
+
+      if (error) {
+        throw error;
+      }
+    }
+  }
+
+  async deleteByIdsInChunks(tableName, idColumn, ids, filters = {}, chunkSize = INSERT_CHUNK_SIZE) {
+    for (let index = 0; index < ids.length; index += chunkSize) {
+      const idsChunk = ids.slice(index, index + chunkSize);
+      let query = supabase
+        .from(tableName)
+        .delete()
+        .in(idColumn, idsChunk);
+
+      Object.entries(filters).forEach(([column, value]) => {
+        query = query.eq(column, value);
+      });
+
+      const { error } = await query;
+
+      if (error) {
+        throw error;
+      }
+    }
+  }
+
+  async fetchActivitiesByProjectIds(projectIds, { source = 'artia_mysql', scopeKey = 'global' } = {}) {
+    const rows = [];
+
+    for (let index = 0; index < projectIds.length; index += PROJECT_ID_FILTER_CHUNK_SIZE) {
+      const projectIdsChunk = projectIds.slice(index, index + PROJECT_ID_FILTER_CHUNK_SIZE);
+      const chunkRows = await this.fetchAllPages((from, to) => (
+        supabase
+          .from('activities')
+          .select('*')
+          .eq('source', source)
+          .eq('sync_scope_key', scopeKey)
+          .in('project_id', projectIdsChunk)
+          .order('label', { ascending: true })
+          .range(from, to)
+      ));
+
+      rows.push(...chunkRows);
+    }
+
+    return rows;
+  }
+
   async getSyncState(resourceType, scopeKey) {
     const { data, error } = await supabase
       .from('integration_sync_states')
@@ -71,18 +167,41 @@ export class IntegrationSnapshotRepository {
     const source = options.source || 'artia_mysql';
     const scopeKey = options.scopeKey || 'global';
     const syncedAt = options.syncedAt || new Date().toISOString();
-
-    await supabase
-      .from('activities')
-      .delete()
-      .eq('source', source);
-
-    await supabase
-      .from('projects')
-      .delete()
-      .eq('source', source);
+    const existingProjectRows = await this.fetchAllPages((from, to) => (
+      supabase
+        .from('projects')
+        .select('project_id')
+        .eq('source', source)
+        .eq('sync_scope_key', scopeKey)
+        .range(from, to)
+    ));
+    const existingActivityRows = await this.fetchAllPages((from, to) => (
+      supabase
+        .from('activities')
+        .select('activity_id')
+        .eq('source', source)
+        .eq('sync_scope_key', scopeKey)
+        .range(from, to)
+    ));
 
     if (!Array.isArray(projects) || projects.length === 0) {
+      const existingProjectIds = existingProjectRows.map((row) => row.project_id);
+      const existingActivityIds = existingActivityRows.map((row) => row.activity_id);
+
+      if (existingActivityIds.length > 0) {
+        await this.deleteByIdsInChunks('activities', 'activity_id', existingActivityIds, {
+          source,
+          sync_scope_key: scopeKey
+        });
+      }
+
+      if (existingProjectIds.length > 0) {
+        await this.deleteByIdsInChunks('projects', 'project_id', existingProjectIds, {
+          source,
+          sync_scope_key: scopeKey
+        });
+      }
+
       return [];
     }
 
@@ -97,13 +216,7 @@ export class IntegrationSnapshotRepository {
       updated_at: syncedAt
     }));
 
-    const { error: projectError } = await supabase
-      .from('projects')
-      .insert(projectRows);
-
-    if (projectError) {
-      throw projectError;
-    }
+    await this.upsertInChunks('projects', projectRows, { onConflict: 'project_id' });
 
     const activityRows = projects.flatMap((project) =>
       (project.activities || []).map((activity) => ({
@@ -120,51 +233,58 @@ export class IntegrationSnapshotRepository {
     );
 
     if (activityRows.length > 0) {
-      const { error: activitiesError } = await supabase
-        .from('activities')
-        .insert(activityRows);
+      await this.upsertInChunks('activities', activityRows, { onConflict: 'activity_id' });
+    }
 
-      if (activitiesError) {
-        throw activitiesError;
-      }
+    const currentProjectIds = new Set(projectRows.map((row) => String(row.project_id)));
+    const currentActivityIds = new Set(activityRows.map((row) => String(row.activity_id)));
+    const staleProjectIds = existingProjectRows
+      .map((row) => String(row.project_id))
+      .filter((projectId) => !currentProjectIds.has(projectId));
+    const staleActivityIds = existingActivityRows
+      .map((row) => String(row.activity_id))
+      .filter((activityId) => !currentActivityIds.has(activityId));
+
+    if (staleActivityIds.length > 0) {
+      await this.deleteByIdsInChunks('activities', 'activity_id', staleActivityIds, {
+        source,
+        sync_scope_key: scopeKey
+      });
+    }
+
+    if (staleProjectIds.length > 0) {
+      await this.deleteByIdsInChunks('projects', 'project_id', staleProjectIds, {
+        source,
+        sync_scope_key: scopeKey
+      });
     }
 
     return this.listProjectCatalog({ source, scopeKey });
   }
 
   async listProjectCatalog({ searchTerm = '', source = 'artia_mysql', scopeKey = 'global' } = {}) {
-    let projectsQuery = supabase
-      .from('projects')
-      .select('*')
-      .eq('source', source)
-      .eq('sync_scope_key', scopeKey)
-      .order('number', { ascending: true });
+    const projectRows = await this.fetchAllPages((from, to) => {
+      let projectsQuery = supabase
+        .from('projects')
+        .select('*')
+        .eq('source', source)
+        .eq('sync_scope_key', scopeKey)
+        .order('number', { ascending: true })
+        .range(from, to);
 
-    if (searchTerm) {
-      projectsQuery = projectsQuery.or(`number.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%`);
-    }
+      if (searchTerm) {
+        projectsQuery = projectsQuery.or(`number.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%`);
+      }
 
-    const { data: projectRows, error: projectError } = await projectsQuery;
-    if (projectError) {
-      throw projectError;
-    }
+      return projectsQuery;
+    });
 
     if (!projectRows?.length) {
       return [];
     }
 
     const projectIds = projectRows.map((project) => project.project_id);
-    const { data: activityRows, error: activityError } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('source', source)
-      .eq('sync_scope_key', scopeKey)
-      .in('project_id', projectIds)
-      .order('label', { ascending: true });
-
-    if (activityError) {
-      throw activityError;
-    }
+    const activityRows = await this.fetchActivitiesByProjectIds(projectIds, { source, scopeKey });
 
     const activitiesByProject = (activityRows || []).reduce((accumulator, activity) => {
       if (!accumulator[activity.project_id]) {
@@ -193,17 +313,16 @@ export class IntegrationSnapshotRepository {
   }
 
   async getProjectActivities(projectId, { source = 'artia_mysql', scopeKey = 'global' } = {}) {
-    const { data, error } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('source', source)
-      .eq('sync_scope_key', scopeKey)
-      .order('label', { ascending: true });
-
-    if (error) {
-      throw error;
-    }
+    const data = await this.fetchAllPages((from, to) => (
+      supabase
+        .from('activities')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('source', source)
+        .eq('sync_scope_key', scopeKey)
+        .order('label', { ascending: true })
+        .range(from, to)
+    ));
 
     return (data || []).map((activity) => ({
       id: activity.activity_id,
