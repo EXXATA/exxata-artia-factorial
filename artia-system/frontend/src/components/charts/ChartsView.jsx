@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArcElement, BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Tooltip } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
@@ -79,6 +79,17 @@ export default function ChartsView() {
   const projects = projectsData?.data || [];
   const dailyDetails = comparisonData?.dailyDetails || [];
   const projectSummaries = comparisonData?.projectSummaries || [];
+
+  useEffect(() => {
+    if (projectFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedProject = projects.some((project) => String(project.number) === String(projectFilter));
+    if (!hasSelectedProject) {
+      setProjectFilter('ALL');
+    }
+  }, [projectFilter, projects]);
 
   const timeline = useMemo(
     () => buildTimelineSeriesFromDetails(dailyDetails, groupBy, source),

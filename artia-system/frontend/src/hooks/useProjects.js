@@ -1,27 +1,44 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectService } from '../services/api/projectService';
 import toast from 'react-hot-toast';
+import { useAuth } from './useAuth';
 
 export function useProjects() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const userScopeKey = user?.id || user?.email || 'anonymous';
+
   return useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', userScopeKey],
+    enabled: isAuthenticated && !isLoading,
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: projectService.getAll
   });
 }
 
 export function useSearchProjects(query) {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const userScopeKey = user?.id || user?.email || 'anonymous';
+
   return useQuery({
-    queryKey: ['projects', 'search', query],
+    queryKey: ['projects', userScopeKey, 'search', query],
     queryFn: () => projectService.search(query),
-    enabled: !!query
+    enabled: isAuthenticated && !isLoading && !!query,
+    staleTime: 0,
+    refetchOnMount: 'always'
   });
 }
 
 export function useProjectActivities(projectId) {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const userScopeKey = user?.id || user?.email || 'anonymous';
+
   return useQuery({
-    queryKey: ['projects', projectId, 'activities'],
+    queryKey: ['projects', userScopeKey, projectId, 'activities'],
     queryFn: () => projectService.getActivities(projectId),
-    enabled: !!projectId
+    enabled: isAuthenticated && !isLoading && !!projectId,
+    staleTime: 0,
+    refetchOnMount: 'always'
   });
 }
 

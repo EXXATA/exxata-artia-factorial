@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Button from '../components/common/Button/Button';
 import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
 import { useProjects } from '../hooks/useProjects';
@@ -44,6 +44,29 @@ export default function WorkedHoursComparison() {
 
     return projects.flatMap((project) => project.activities || []);
   }, [projectFilter, projects]);
+
+  useEffect(() => {
+    if (projectFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedProject = projects.some((project) => String(project.number) === String(projectFilter));
+    if (!hasSelectedProject) {
+      setProjectFilter('ALL');
+      setActivityFilter('ALL');
+    }
+  }, [projectFilter, projects]);
+
+  useEffect(() => {
+    if (activityFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedActivity = availableActivities.some((activity) => String(activity.label) === String(activityFilter));
+    if (!hasSelectedActivity) {
+      setActivityFilter('ALL');
+    }
+  }, [activityFilter, availableActivities]);
 
   const filteredComparisons = dailyDetails.filter((comp) => {
     if (filter === 'pending') return comp.hasPendingSync;

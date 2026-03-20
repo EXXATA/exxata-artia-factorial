@@ -1,29 +1,37 @@
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class UpdateEventUseCase {
-  constructor(eventRepository, eventValidationService) {
+  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService) {
     this.eventRepository = eventRepository;
     this.eventValidationService = eventValidationService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
-  async execute(eventId, data, userId) {
+  async execute(eventId, data, userContext) {
+    const userId = typeof userContext === 'string' ? userContext : userContext?.id;
     const existingEvent = await this.eventRepository.findById(eventId, userId);
 
     if (!existingEvent) {
       throw new Error('Event not found');
     }
 
+    await this.accessibleProjectCatalogService.ensureEventProjectAccessible(userContext, existingEvent.project);
+
     if (data.start && data.end && data.day) {
       const timeRange = new TimeRange(new Date(data.start), new Date(data.end), data.day);
       existingEvent.updateTimeRange(timeRange);
     }
 
-    if (data.project) {
-      existingEvent.updateProject(data.project);
-    }
+    if (data.project || data.activity || data.activityLabel || data.activityId) {
+      const resolvedSelection = await this.accessibleProjectCatalogService.resolveEventSelection(userContext, {
+        project: data.project || existingEvent.project,
+        activity: data.activity || existingEvent.activity,
+        activityLabel: data.activityLabel || existingEvent.activity?.label,
+        activityId: data.activityId
+      });
 
-    if (data.activity) {
-      existingEvent.updateActivity(data.activity);
+      existingEvent.updateProject(resolvedSelection.project.number);
+      existingEvent.updateActivity(resolvedSelection.activity);
     }
 
     if (data.notes !== undefined) {

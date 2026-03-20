@@ -6,7 +6,8 @@ export class EventController {
     listEventsUseCase,
     moveEventUseCase,
     importLegacyEventsUseCase,
-    integrationReadModelService
+    integrationReadModelService,
+    accessibleProjectCatalogService
   ) {
     this.createEventUseCase = createEventUseCase;
     this.updateEventUseCase = updateEventUseCase;
@@ -15,6 +16,7 @@ export class EventController {
     this.moveEventUseCase = moveEventUseCase;
     this.importLegacyEventsUseCase = importLegacyEventsUseCase;
     this.integrationReadModelService = integrationReadModelService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
   async create(req, res, next) {
@@ -22,7 +24,7 @@ export class EventController {
       const userId = req.user.id;
       const eventData = { ...req.body, userId };
 
-      const event = await this.createEventUseCase.execute(eventData);
+      const event = await this.createEventUseCase.execute(eventData, req.user);
 
       res.status(201).json({
         success: true,
@@ -55,11 +57,16 @@ export class EventController {
         endDate: filters.day || filters.endDate,
         forceRefresh: req.query.refresh
       });
+      const accessDecoratedEvents = await this.accessibleProjectCatalogService.decorateEventsWithCatalogAccess(
+        enrichedEvents,
+        req.user,
+        { forceRefresh: req.query.refresh }
+      );
 
       res.status(200).json({
         success: true,
-        data: enrichedEvents,
-        count: enrichedEvents.length
+        data: accessDecoratedEvents,
+        count: accessDecoratedEvents.length
       });
     } catch (error) {
       next(error);
@@ -79,9 +86,14 @@ export class EventController {
         });
       }
 
+      const [decoratedEvent] = await this.accessibleProjectCatalogService.decorateEventsWithCatalogAccess(
+        [event.toJSON()],
+        req.user
+      );
+
       res.status(200).json({
         success: true,
-        data: event.toJSON()
+        data: decoratedEvent
       });
     } catch (error) {
       next(error);
@@ -94,7 +106,7 @@ export class EventController {
       const userId = req.user.id;
       const updateData = req.body;
 
-      const event = await this.updateEventUseCase.execute(id, updateData, userId);
+      const event = await this.updateEventUseCase.execute(id, updateData, req.user);
 
       res.status(200).json({
         success: true,
@@ -111,7 +123,7 @@ export class EventController {
       const userId = req.user.id;
       const { newStart, newEnd, newDay } = req.body;
 
-      const event = await this.moveEventUseCase.execute(id, newStart, newEnd, newDay, userId);
+      const event = await this.moveEventUseCase.execute(id, newStart, newEnd, newDay, req.user);
 
       res.status(200).json({
         success: true,

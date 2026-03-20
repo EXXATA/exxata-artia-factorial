@@ -2,13 +2,20 @@ import { Event } from '../../../domain/entities/Event.js';
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class CreateEventUseCase {
-  constructor(eventRepository, eventValidationService) {
+  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService) {
     this.eventRepository = eventRepository;
     this.eventValidationService = eventValidationService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
-  async execute(data) {
+  async execute(data, userContext = {}) {
     const { start, end, day, project, activity, notes, artiaLaunched, workplace, userId } = data;
+    const resolvedSelection = await this.accessibleProjectCatalogService.resolveEventSelection(userContext, {
+      project,
+      activity,
+      activityLabel: data.activityLabel,
+      activityId: data.activityId
+    });
 
     const timeRange = new TimeRange(new Date(start), new Date(end), day);
 
@@ -16,8 +23,8 @@ export class CreateEventUseCase {
       id: this.generateId(),
       userId,
       timeRange,
-      project,
-      activity,
+      project: resolvedSelection.project.number,
+      activity: resolvedSelection.activity,
       notes,
       artiaLaunched,
       workplace

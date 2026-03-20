@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useEvents } from '../../hooks/useEvents';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
@@ -61,6 +61,17 @@ export default function GanttView() {
       return accumulator;
     }, {});
   }, [comparisonData]);
+
+  useEffect(() => {
+    if (projectFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedProject = projects.some((project) => String(project.number) === String(projectFilter));
+    if (!hasSelectedProject) {
+      setProjectFilter('ALL');
+    }
+  }, [projectFilter, projects]);
 
   const handlePrevWeek = () => {
     setWeekStart((current) => {

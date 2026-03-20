@@ -29,6 +29,7 @@ import { InMemoryTtlCache } from './infrastructure/cache/InMemoryTtlCache.js';
 import { ArtiaAuthService } from './infrastructure/external/ArtiaAuthService.js';
 import { ArtiaDBService } from './infrastructure/external/ArtiaDBService.js';
 import { ArtiaHoursReadService } from './infrastructure/external/ArtiaHoursReadService.js';
+import { ArtiaProjectAccessService } from './infrastructure/external/ArtiaProjectAccessService.js';
 import { FactorialService } from './infrastructure/external/FactorialService.js';
 import { SupabaseAuthService } from './infrastructure/auth/SupabaseAuthService.js';
 
@@ -48,6 +49,7 @@ import { LoginWithArtiaDBUseCase } from './application/use-cases/auth/LoginWithA
 import { RegisterWithFactorialUseCase } from './application/use-cases/auth/RegisterWithFactorialUseCase.js';
 import { LoginUseCase } from './application/use-cases/auth/LoginUseCase.js';
 import { GetWorkedHoursComparisonUseCase } from './application/use-cases/hours/GetWorkedHoursComparisonUseCase.js';
+import { AccessibleProjectCatalogService } from './application/services/AccessibleProjectCatalogService.js';
 import { IntegrationReadModelService } from './application/services/IntegrationReadModelService.js';
 
 // Controllers
@@ -140,6 +142,7 @@ const inMemoryCache = new InMemoryTtlCache();
 const artiaAuthService = new ArtiaAuthService();
 const artiaDBService = new ArtiaDBService();
 const artiaHoursReadService = new ArtiaHoursReadService();
+const artiaProjectAccessService = new ArtiaProjectAccessService(inMemoryCache);
 const factorialService = new FactorialService();
 const supabaseAuthService = new SupabaseAuthService();
 const integrationReadModelService = new IntegrationReadModelService({
@@ -149,12 +152,28 @@ const integrationReadModelService = new IntegrationReadModelService({
   artiaHoursReadService,
   inMemoryCache
 });
+const accessibleProjectCatalogService = new AccessibleProjectCatalogService(
+  integrationReadModelService,
+  artiaProjectAccessService
+);
 
-const createEventUseCase = new CreateEventUseCase(eventRepository, eventValidationService);
-const updateEventUseCase = new UpdateEventUseCase(eventRepository, eventValidationService);
+const createEventUseCase = new CreateEventUseCase(
+  eventRepository,
+  eventValidationService,
+  accessibleProjectCatalogService
+);
+const updateEventUseCase = new UpdateEventUseCase(
+  eventRepository,
+  eventValidationService,
+  accessibleProjectCatalogService
+);
 const deleteEventUseCase = new DeleteEventUseCase(eventRepository);
 const listEventsUseCase = new ListEventsUseCase(eventRepository);
-const moveEventUseCase = new MoveEventUseCase(eventRepository, eventValidationService);
+const moveEventUseCase = new MoveEventUseCase(
+  eventRepository,
+  eventValidationService,
+  accessibleProjectCatalogService
+);
 const importLegacyEventsUseCase = new ImportLegacyEventsUseCase(
   eventRepository,
   legacyEventsXLSXParser,
@@ -183,7 +202,8 @@ const loginUseCase = new LoginUseCase(
 const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
   eventRepository,
   userRepository,
-  integrationReadModelService
+  integrationReadModelService,
+  accessibleProjectCatalogService
 );
 
 const eventController = new EventController(
@@ -193,14 +213,15 @@ const eventController = new EventController(
   listEventsUseCase,
   moveEventUseCase,
   importLegacyEventsUseCase,
-  integrationReadModelService
+  integrationReadModelService,
+  accessibleProjectCatalogService
 );
 
 const projectController = new ProjectController(
   importProjectsUseCase,
   searchProjectsUseCase,
   projectRepository,
-  integrationReadModelService
+  accessibleProjectCatalogService
 );
 
 const exportController = new ExportController(exportToCSVUseCase, exportToXLSXUseCase);

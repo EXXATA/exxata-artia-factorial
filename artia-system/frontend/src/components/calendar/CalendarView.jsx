@@ -249,6 +249,12 @@ export default function CalendarView() {
     event.preventDefault();
     event.stopPropagation();
 
+    if (calendarEvent.hasProjectAccess === false) {
+      setDraftEvent(null);
+      setSelectedEvent(calendarEvent);
+      return;
+    }
+
     const { startMinutes, endMinutes } = getEventBounds(calendarEvent);
     const pointerMinutes = getMinutesFromPointer(calendarEvent.day, event.clientY, 'round');
 
@@ -271,6 +277,7 @@ export default function CalendarView() {
 
   const handleResizeMouseDown = (calendarEvent, edge, event) => {
     if (event.button !== 0) return;
+    if (calendarEvent.hasProjectAccess === false) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -367,6 +374,7 @@ export default function CalendarView() {
         <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Marcado manualmente</span>
         <span className="ui-chip"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
         <span className="ui-chip ui-chip-violet"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />Somente Artia</span>
+        <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Historico sem acesso atual</span>
       </div>
 
       <WorkedHoursRangePanel
@@ -505,12 +513,14 @@ export default function CalendarView() {
 
                         const position = getEventPosition(event);
                         const syncPresentation = getArtiaSyncPresentation(event.artiaSyncStatus);
+                        const isLocked = event.hasProjectAccess === false;
 
                         return (
                           <div
                             key={event.id}
                             role="button"
                             tabIndex={0}
+                            aria-disabled={isLocked}
                             data-event-block="true"
                             onMouseDown={(mouseEvent) => handleEventMouseDown(event, mouseEvent)}
                             onKeyDown={(keyboardEvent) => {
@@ -520,27 +530,39 @@ export default function CalendarView() {
                                 setSelectedEvent(event);
                               }
                             }}
-                            className={`absolute left-1.5 right-1.5 overflow-hidden rounded-2xl border px-2 py-2 text-left shadow-[0_12px_24px_rgba(0,0,0,0.25)] transition hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)] focus:outline-none focus:ring-2 focus:ring-primary/60 ${syncPresentation.blockClassName}`}
+                            className={`absolute left-1.5 right-1.5 overflow-hidden rounded-2xl border px-2 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-primary/60 ${isLocked ? 'cursor-not-allowed opacity-85 shadow-sm' : 'shadow-[0_12px_24px_rgba(0,0,0,0.25)] hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]'} ${syncPresentation.blockClassName}`}
                             style={{ top: position.top + 2, height: position.height }}
+                            title={isLocked ? 'Historico sem acesso atual ao projeto no Artia' : undefined}
                           >
-                            <span
-                              data-resize-handle="true"
-                              onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'start', mouseEvent)}
-                              className="absolute inset-x-3 top-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
-                            />
+                            {!isLocked ? (
+                              <span
+                                data-resize-handle="true"
+                                onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'start', mouseEvent)}
+                                className="absolute inset-x-3 top-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
+                              />
+                            ) : null}
                             <div className="inline-flex rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
                               {extractTimeValue(event.start)} – {extractTimeValue(event.end)}
                             </div>
                             <div className="mt-2 truncate text-sm font-semibold text-white">{event.project}</div>
                             <div className="truncate text-xs text-slate-300">{event.activityLabel}</div>
-                            <div className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${syncPresentation.badgeClassName}`}>
-                              {syncPresentation.label}
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              <div className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${syncPresentation.badgeClassName}`}>
+                                {syncPresentation.label}
+                              </div>
+                              {isLocked ? (
+                                <div className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-50">
+                                  Sem acesso atual
+                                </div>
+                              ) : null}
                             </div>
-                            <span
-                              data-resize-handle="true"
-                              onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'end', mouseEvent)}
-                              className="absolute inset-x-3 bottom-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
-                            />
+                            {!isLocked ? (
+                              <span
+                                data-resize-handle="true"
+                                onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'end', mouseEvent)}
+                                className="absolute inset-x-3 bottom-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
+                              />
+                            ) : null}
                           </div>
                         );
                       })}

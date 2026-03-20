@@ -1,17 +1,21 @@
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class MoveEventUseCase {
-  constructor(eventRepository, eventValidationService) {
+  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService) {
     this.eventRepository = eventRepository;
     this.eventValidationService = eventValidationService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
-  async execute(eventId, newStart, newEnd, newDay, userId) {
+  async execute(eventId, newStart, newEnd, newDay, userContext) {
+    const userId = typeof userContext === 'string' ? userContext : userContext?.id;
     const event = await this.eventRepository.findById(eventId, userId);
 
     if (!event) {
       throw new Error('Event not found');
     }
+
+    await this.accessibleProjectCatalogService.ensureEventProjectAccessible(userContext, event.project);
 
     const newTimeRange = new TimeRange(new Date(newStart), new Date(newEnd), newDay);
     event.updateTimeRange(newTimeRange);

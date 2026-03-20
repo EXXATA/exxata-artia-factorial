@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import EventModal from '../calendar/EventModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { useEvents } from '../../hooks/useEvents';
@@ -43,6 +43,29 @@ export default function TableView() {
 
     return projects.flatMap((project) => project.activities || []);
   }, [projectFilter, projects]);
+
+  useEffect(() => {
+    if (projectFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedProject = projects.some((project) => String(project.number) === String(projectFilter));
+    if (!hasSelectedProject) {
+      setProjectFilter('ALL');
+      setActivityFilter('ALL');
+    }
+  }, [projectFilter, projects]);
+
+  useEffect(() => {
+    if (activityFilter === 'ALL') {
+      return;
+    }
+
+    const hasSelectedActivity = availableActivities.some((activity) => String(activity.label) === String(activityFilter));
+    if (!hasSelectedActivity) {
+      setActivityFilter('ALL');
+    }
+  }, [activityFilter, availableActivities]);
 
   const filteredEvents = useMemo(() => {
     const normalizedActivityFilter = activityFilter.trim().toLowerCase();

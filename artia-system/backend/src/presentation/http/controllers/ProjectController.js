@@ -1,9 +1,9 @@
 export class ProjectController {
-  constructor(importProjectsUseCase, searchProjectsUseCase, projectRepository, integrationReadModelService) {
+  constructor(importProjectsUseCase, searchProjectsUseCase, projectRepository, accessibleProjectCatalogService) {
     this.importProjectsUseCase = importProjectsUseCase;
     this.searchProjectsUseCase = searchProjectsUseCase;
     this.projectRepository = projectRepository;
-    this.integrationReadModelService = integrationReadModelService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
   async import(req, res, next) {
@@ -29,7 +29,7 @@ export class ProjectController {
 
   async list(req, res, next) {
     try {
-      const projects = await this.integrationReadModelService.getProjectCatalog({
+      const projects = await this.accessibleProjectCatalogService.getAccessibleProjectCatalog(req.user, {
         forceRefresh: req.query.refresh
       });
 
@@ -48,7 +48,7 @@ export class ProjectController {
       const { q } = req.query;
 
       const searchTerm = String(q || '').trim().toLowerCase();
-      const filteredProjects = await this.integrationReadModelService.getProjectCatalog({
+      const filteredProjects = await this.accessibleProjectCatalogService.getAccessibleProjectCatalog(req.user, {
         searchTerm,
         forceRefresh: req.query.refresh
       });
@@ -67,7 +67,7 @@ export class ProjectController {
     try {
       const { id } = req.params;
 
-      const activities = await this.integrationReadModelService.getProjectActivities(id, {
+      const activities = await this.accessibleProjectCatalogService.getAccessibleProjectActivities(req.user, id, {
         forceRefresh: req.query.refresh
       });
 

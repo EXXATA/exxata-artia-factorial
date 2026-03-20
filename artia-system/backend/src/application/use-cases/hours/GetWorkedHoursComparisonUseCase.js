@@ -11,10 +11,11 @@ function normalizeText(value) {
 }
 
 export class GetWorkedHoursComparisonUseCase {
-  constructor(eventRepository, userRepository, integrationReadModelService) {
+  constructor(eventRepository, userRepository, integrationReadModelService, accessibleProjectCatalogService = null) {
     this.eventRepository = eventRepository;
     this.userRepository = userRepository;
     this.integrationReadModelService = integrationReadModelService;
+    this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
 
   buildRange(options = {}) {
@@ -92,55 +93,63 @@ export class GetWorkedHoursComparisonUseCase {
     return text;
   }
 
-  resolveProjectDescriptor(projectContext, { systemProject = '', artiaProject = '', artiaProjectId = '' } = {}) {
+  buildCatalogProjectDescriptor(project) {
+    return {
+      key: String(project.id),
+      id: String(project.id),
+      number: String(project.number || '').trim(),
+      name: String(project.name || '').trim(),
+      label: `${project.number || ''}${project.name ? ` - ${project.name}` : ''}`.trim()
+    };
+  }
+
+  async loadProjectCatalogForUser(user, options = {}) {
+    if (this.accessibleProjectCatalogService) {
+      return this.accessibleProjectCatalogService.getAccessibleProjectCatalog(user, {
+        forceRefresh: options.forceRefresh
+      });
+    }
+
+    return this.integrationReadModelService.getProjectCatalog({
+      forceRefresh: options.forceRefresh
+    });
+  }
+
+  resolveCatalogProjectDescriptor(projectContext, { systemProject = '', artiaProject = '', artiaProjectId = '' } = {}) {
     const projectIdKey = artiaProjectId ? String(artiaProjectId).trim() : '';
     if (projectIdKey && projectContext.byId.has(projectIdKey)) {
-      const catalogProject = projectContext.byId.get(projectIdKey);
-      return {
-        key: String(catalogProject.id),
-        id: String(catalogProject.id),
-        number: String(catalogProject.number || '').trim(),
-        name: String(catalogProject.name || '').trim(),
-        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
-      };
+      return this.buildCatalogProjectDescriptor(projectContext.byId.get(projectIdKey));
     }
 
     const normalizedSystemProject = normalizeText(this.extractProjectNumber(systemProject));
     if (normalizedSystemProject && projectContext.byNumber.has(normalizedSystemProject)) {
-      const catalogProject = projectContext.byNumber.get(normalizedSystemProject);
-      return {
-        key: String(catalogProject.id),
-        id: String(catalogProject.id),
-        number: String(catalogProject.number || '').trim(),
-        name: String(catalogProject.name || '').trim(),
-        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
-      };
+      return this.buildCatalogProjectDescriptor(projectContext.byNumber.get(normalizedSystemProject));
     }
 
     const normalizedArtiaProjectNumber = normalizeText(this.extractProjectNumber(artiaProject));
     if (normalizedArtiaProjectNumber && projectContext.byNumber.has(normalizedArtiaProjectNumber)) {
-      const catalogProject = projectContext.byNumber.get(normalizedArtiaProjectNumber);
-      return {
-        key: String(catalogProject.id),
-        id: String(catalogProject.id),
-        number: String(catalogProject.number || '').trim(),
-        name: String(catalogProject.name || '').trim(),
-        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
-      };
+      return this.buildCatalogProjectDescriptor(projectContext.byNumber.get(normalizedArtiaProjectNumber));
     }
 
     const normalizedArtiaLabel = normalizeText(artiaProject);
     if (normalizedArtiaLabel && projectContext.byNormalizedLabel.has(normalizedArtiaLabel)) {
-      const catalogProject = projectContext.byNormalizedLabel.get(normalizedArtiaLabel);
-      return {
-        key: String(catalogProject.id),
-        id: String(catalogProject.id),
-        number: String(catalogProject.number || '').trim(),
-        name: String(catalogProject.name || '').trim(),
-        label: `${catalogProject.number || ''}${catalogProject.name ? ` - ${catalogProject.name}` : ''}`.trim()
-      };
+      return this.buildCatalogProjectDescriptor(projectContext.byNormalizedLabel.get(normalizedArtiaLabel));
     }
 
+    return null;
+  }
+
+  resolveProjectDescriptor(projectContext, { systemProject = '', artiaProject = '', artiaProjectId = '' } = {}) {
+    const catalogDescriptor = this.resolveCatalogProjectDescriptor(projectContext, {
+      systemProject,
+      artiaProject,
+      artiaProjectId
+    });
+    if (catalogDescriptor) {
+      return catalogDescriptor;
+    }
+
+    const projectIdKey = artiaProjectId ? String(artiaProjectId).trim() : '';
     const rawNumber = this.extractProjectNumber(systemProject || artiaProject || projectIdKey);
     const rawName = String(artiaProject || systemProject || rawNumber || 'Sem projeto').trim();
 
@@ -432,7 +441,7 @@ export class GetWorkedHoursComparisonUseCase {
     }
 
     const range = this.buildRange(options);
-    const projectCatalog = await this.integrationReadModelService.getProjectCatalog();
+    const projectCatalog = await this.loadProjectCatalogForUser(user, options);
     const projectContext = this.buildProjectCatalogContext(projectCatalog);
     const factorialHoursByDay = await this.integrationReadModelService.getFactorialDailyHours(user, range, {
       forceRefresh: options.forceRefresh
@@ -455,10 +464,16 @@ export class GetWorkedHoursComparisonUseCase {
       .filter((event) => this.matchesProjectFilter(projectContext, options.project, { systemProject: event.project }))
       .filter((event) => this.matchesActivityFilter(options.activity, event.activityId, event.activityLabel));
 
-    const serializedSystemEvents = filteredDecoratedEvents.map((event) => {
-      const projectDescriptor = this.resolveProjectDescriptor(projectContext, { systemProject: event.project });
-      return this.serializeSystemEvent(event, projectDescriptor);
-    });
+    const serializedSystemEvents = filteredDecoratedEvents
+      .map((event) => {
+        const projectDescriptor = this.resolveCatalogProjectDescriptor(projectContext, { systemProject: event.project });
+        if (!projectDescriptor) {
+          return null;
+        }
+
+        return this.serializeSystemEvent(event, projectDescriptor);
+      })
+      .filter(Boolean);
 
     const filteredArtiaEntries = (artiaSnapshot.entries || [])
       .filter((entry) => this.matchesProjectFilter(projectContext, options.project, {
@@ -468,14 +483,18 @@ export class GetWorkedHoursComparisonUseCase {
       }))
       .filter((entry) => this.matchesActivityFilter(options.activity, entry.activityId, entry.activity))
       .map((entry) => {
-        const projectDescriptor = this.resolveProjectDescriptor(projectContext, {
+        const projectDescriptor = this.resolveCatalogProjectDescriptor(projectContext, {
           systemProject: '',
           artiaProject: entry.project,
           artiaProjectId: entry.projectId
         });
+        if (!projectDescriptor) {
+          return null;
+        }
 
         return this.serializeArtiaEntry(entry, projectDescriptor);
-      });
+      })
+      .filter(Boolean);
 
     const fallbackArtiaHoursByDay = Object.fromEntries(
       Object.entries(artiaSnapshot.dailyHoursByDay || {}).map(([day, value]) => [day, value.workedHours || 0])

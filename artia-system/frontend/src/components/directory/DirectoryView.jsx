@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
 
@@ -54,6 +54,17 @@ export default function DirectoryView() {
       String(project.name || '').toLowerCase().includes(search)
     );
   });
+
+  useEffect(() => {
+    if (!selectedProject) {
+      return;
+    }
+
+    const nextSelectedProject = projects.find((project) => String(project.id) === String(selectedProject.id)) || null;
+    if (!nextSelectedProject) {
+      setSelectedProject(null);
+    }
+  }, [projects, selectedProject]);
 
   const selectedProjectSummary = useMemo(() => {
     if (!selectedProject) {

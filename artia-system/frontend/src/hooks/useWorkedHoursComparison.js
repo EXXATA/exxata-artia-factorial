@@ -1,10 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { workedHoursService } from '../services/api/workedHoursService';
+import { useAuth } from './useAuth';
 
 export function useWorkedHoursComparison({ startDate, endDate, project, activity, refresh = false, enabled = true } = {}) {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const userScopeKey = user?.id || user?.email || 'anonymous';
+
   return useQuery({
-    queryKey: ['worked-hours-comparison', startDate || null, endDate || null, project || null, activity || null, refresh],
-    enabled: enabled && Boolean(startDate) && Boolean(endDate),
+    queryKey: ['worked-hours-comparison', userScopeKey, startDate || null, endDate || null, project || null, activity || null, refresh],
+    enabled: isAuthenticated && !isLoading && enabled && Boolean(startDate) && Boolean(endDate),
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const response = await workedHoursService.getRangeComparison({
         startDate,
