@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import Modal from '../common/Modal/Modal';
-import Button from '../common/Button/Button';
-import Input from '../common/Input/Input';
 import toast from 'react-hot-toast';
 import { artiaAuthService } from '../../services/api/artiaAuthService';
+import { setArtiaToken } from '../../services/auth/authStorage';
+import Button from '../common/Button/Button';
+import Input from '../common/Input/Input';
+import Modal from '../common/Modal/Modal';
 
 export default function ArtiaLoginModal({ isOpen, onClose, onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -22,14 +23,10 @@ export default function ArtiaLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
     try {
       const response = await artiaAuthService.login(email, password);
-      
-      // Armazena tokens
-      localStorage.setItem('auth_token', response.data.token);
-      localStorage.setItem('artia_token', response.data.artiaToken);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
 
+      setArtiaToken(response.data.artiaToken);
       toast.success(`Bem-vindo, ${response.data.user.name}!`);
-      
+
       if (onLoginSuccess) {
         onLoginSuccess(response.data);
       }
@@ -47,7 +44,7 @@ export default function ArtiaLoginModal({ isOpen, onClose, onLoginSuccess }) {
       <form onSubmit={handleLogin} className="space-y-4">
         <div className="bg-light-panel2 dark:bg-dark-panel2 rounded-lg p-4 mb-4">
           <p className="text-sm text-light-muted dark:text-dark-muted">
-            Use suas credenciais do Artia para acessar o sistema. Seus projetos e atividades serão sincronizados automaticamente.
+            Use suas credenciais do Artia para sincronizar projetos e atividades sem substituir sua sessão principal do Supabase.
           </p>
         </div>
 

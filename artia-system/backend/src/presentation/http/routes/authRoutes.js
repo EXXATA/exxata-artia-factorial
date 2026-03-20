@@ -2,6 +2,7 @@ import express from 'express';
 import { body } from 'express-validator';
 import { validationMiddleware } from '../middlewares/validationMiddleware.js';
 import { strictRateLimitMiddleware } from '../middlewares/rateLimitMiddleware.js';
+import { authMiddleware } from '../middlewares/authMiddleware.js';
 
 export function createAuthRoutes(authController) {
   const router = express.Router();
@@ -22,8 +23,7 @@ export function createAuthRoutes(authController) {
     strictRateLimitMiddleware,
     [
       body('email').isEmail().withMessage('Valid email is required'),
-      body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-      body('name').notEmpty().withMessage('Name is required')
+      body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
     ],
     validationMiddleware,
     (req, res, next) => authController.register(req, res, next)
@@ -37,6 +37,8 @@ export function createAuthRoutes(authController) {
     validationMiddleware,
     (req, res, next) => authController.refresh(req, res, next)
   );
+
+  router.get('/me', authMiddleware, (req, res, next) => authController.me(req, res, next));
 
   return router;
 }

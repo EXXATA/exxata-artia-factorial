@@ -1,6 +1,13 @@
 export function errorHandler(err, req, res, next) {
   console.error('Error:', err);
 
+  if (err.statusCode) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message
+    });
+  }
+
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -30,10 +37,10 @@ export function errorHandler(err, req, res, next) {
     });
   }
 
-  res.status(500).json({
+  return res.status(500).json({
     success: false,
-    message: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
+    message: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
       : err.message
   });
 }

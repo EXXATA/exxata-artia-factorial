@@ -2,9 +2,10 @@ export class User {
   constructor({
     id,
     email,
-    passwordHash,
+    passwordHash = null,
     name,
     factorialEmployeeId = null,
+    artiaUserId = null,
     createdAt = new Date(),
     updatedAt = new Date()
   }) {
@@ -13,6 +14,7 @@ export class User {
     this.passwordHash = passwordHash;
     this.name = name;
     this.factorialEmployeeId = factorialEmployeeId;
+    this.artiaUserId = artiaUserId;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
 
@@ -26,9 +28,6 @@ export class User {
     if (!this.email) {
       throw new Error('Email is required');
     }
-    if (!this.passwordHash) {
-      throw new Error('Password hash is required');
-    }
   }
 
   toJSON() {
@@ -37,6 +36,7 @@ export class User {
       email: this.email,
       name: this.name,
       factorialEmployeeId: this.factorialEmployeeId,
+      artiaUserId: this.artiaUserId,
       createdAt: this.createdAt.toISOString(),
       updatedAt: this.updatedAt.toISOString()
     };

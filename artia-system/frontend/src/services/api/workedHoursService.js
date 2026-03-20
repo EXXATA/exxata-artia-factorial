@@ -1,14 +1,4 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  };
-};
+import { apiClient } from './client';
 
 function buildWorkedHoursParams({ startDate, endDate, date, year, month, project, activity, refresh } = {}) {
   const params = {};
@@ -28,8 +18,7 @@ function buildWorkedHoursParams({ startDate, endDate, date, year, month, project
 export const workedHoursService = {
   async getFullHistory(filters = {}) {
     try {
-      const response = await axios.get(`${API_URL}/api/v1/worked-hours/history`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get('/worked-hours/history', {
         params: buildWorkedHoursParams(filters)
       });
 
@@ -46,8 +35,7 @@ export const workedHoursService = {
 
   async getRangeComparison({ startDate, endDate, project, activity, refresh = false }) {
     try {
-      const response = await axios.get(`${API_URL}/api/v1/worked-hours/range`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get('/worked-hours/range', {
         params: buildWorkedHoursParams({ startDate, endDate, project, activity, refresh })
       });
 
@@ -64,8 +52,7 @@ export const workedHoursService = {
 
   async getDailyComparison({ date, project, activity, refresh = false }) {
     try {
-      const response = await axios.get(`${API_URL}/api/v1/worked-hours/daily`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get('/worked-hours/daily', {
         params: buildWorkedHoursParams({ date, project, activity, refresh })
       });
 
@@ -82,8 +69,7 @@ export const workedHoursService = {
 
   async getMonthlyComparison({ year, month, project, activity, refresh = false }) {
     try {
-      const response = await axios.get(`${API_URL}/api/v1/worked-hours/monthly`, {
-        headers: getAuthHeaders(),
+      const response = await apiClient.get('/worked-hours/monthly', {
         params: buildWorkedHoursParams({ year, month, project, activity, refresh })
       });
 

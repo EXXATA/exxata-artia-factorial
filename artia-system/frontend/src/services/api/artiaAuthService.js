@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { clearArtiaToken, getArtiaToken } from '../auth/authStorage';
 
 export const artiaAuthService = {
   async login(email, password) {
@@ -27,9 +28,7 @@ export const artiaAuthService = {
   },
 
   logout() {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('artia_token');
-    localStorage.removeItem('user');
+    clearArtiaToken();
   },
 
   getCurrentUser() {
@@ -38,10 +37,10 @@ export const artiaAuthService = {
   },
 
   isAuthenticated() {
-    return !!localStorage.getItem('auth_token');
+    return !!getArtiaToken();
   },
 
   getArtiaToken() {
-    return localStorage.getItem('artia_token');
+    return getArtiaToken();
   }
 };

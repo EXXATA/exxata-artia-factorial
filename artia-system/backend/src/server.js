@@ -30,6 +30,7 @@ import { ArtiaAuthService } from './infrastructure/external/ArtiaAuthService.js'
 import { ArtiaDBService } from './infrastructure/external/ArtiaDBService.js';
 import { ArtiaHoursReadService } from './infrastructure/external/ArtiaHoursReadService.js';
 import { FactorialService } from './infrastructure/external/FactorialService.js';
+import { SupabaseAuthService } from './infrastructure/auth/SupabaseAuthService.js';
 
 // Use Cases
 import { CreateEventUseCase } from './application/use-cases/events/CreateEventUseCase.js';
@@ -75,35 +76,46 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
-// CORS configurado para aceitar múltiplas origens
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  /^http:\/\/127\.0\.0\.1:\d+$/, // Qualquer porta no 127.0.0.1 (para preview)
-  /^http:\/\/localhost:\d+$/ // Qualquer porta no localhost
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^http:\/\/localhost:\d+$/
 ];
 
-app.use(cors({
+if (config.corsOrigin && config.corsOrigin !== '*') {
+  allowedOrigins.push(config.corsOrigin);
+}
+
+const corsOptions = {
   origin: (origin, callback) => {
-    // Permitir requisições sem origin (como Postman, curl, etc)
-    if (!origin) return callback(null, true);
-    
-    // Verificar se a origin está na lista de permitidas
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (typeof allowed === 'string') {
-        return allowed === origin;
-      }
-      return allowed.test(origin);
-    });
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    if (!origin) {
+      return callback(null, true);
     }
+
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed = allowedOrigins.some((allowed) => {
+      if (typeof allowed === 'string') {
+        return allowed.replace(/\/$/, '') === normalizedOrigin;
+      }
+
+      return allowed.test(normalizedOrigin);
+    });
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Not allowed by CORS: ${normalizedOrigin}`));
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -129,6 +141,7 @@ const artiaAuthService = new ArtiaAuthService();
 const artiaDBService = new ArtiaDBService();
 const artiaHoursReadService = new ArtiaHoursReadService();
 const factorialService = new FactorialService();
+const supabaseAuthService = new SupabaseAuthService();
 const integrationReadModelService = new IntegrationReadModelService({
   snapshotRepository: integrationSnapshotRepository,
   artiaDBService,
@@ -157,8 +170,16 @@ const exportToXLSXUseCase = new ExportToXLSXUseCase(eventRepository, xlsxGenerat
 const loginWithArtiaUseCase = new LoginWithArtiaUseCase(artiaAuthService, userRepository);
 const loginWithArtiaDBUseCase = new LoginWithArtiaDBUseCase(artiaDBService, userRepository);
 
-const registerWithFactorialUseCase = new RegisterWithFactorialUseCase(factorialService, userRepository);
-const loginUseCase = new LoginUseCase(userRepository);
+const registerWithFactorialUseCase = new RegisterWithFactorialUseCase(
+  factorialService,
+  userRepository,
+  supabaseAuthService
+);
+const loginUseCase = new LoginUseCase(
+  userRepository,
+  supabaseAuthService,
+  factorialService
+);
 const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
   eventRepository,
   userRepository,
@@ -184,7 +205,12 @@ const projectController = new ProjectController(
 
 const exportController = new ExportController(exportToCSVUseCase, exportToXLSXUseCase);
 
-const authController = new AuthController(userRepository);
+const authController = new AuthController(
+  registerWithFactorialUseCase,
+  loginUseCase,
+  supabaseAuthService,
+  userRepository
+);
 const artiaAuthController = new ArtiaAuthController(loginWithArtiaUseCase, artiaAuthService);
 const artiaDBAuthController = new ArtiaDBAuthController(loginWithArtiaDBUseCase, artiaDBService);
 
@@ -212,13 +238,13 @@ app.use(errorHandler);
 async function startServer() {
   try {
     app.listen(config.port, () => {
-      console.log(`🚀 Server running on port ${config.port}`);
-      console.log(`📝 Environment: ${config.nodeEnv}`);
-      console.log(`🌐 CORS enabled for: ${config.corsOrigin}`);
-      console.log(`🗄️  Database: Supabase`);
+      console.log(`Server running on port ${config.port}`);
+      console.log(`Environment: ${config.nodeEnv}`);
+      console.log(`CORS ready for localhost and 127.0.0.1 dev origins`);
+      console.log('Database: Supabase');
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }

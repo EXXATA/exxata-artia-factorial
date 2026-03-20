@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import { factorialAuthService } from '../services/api/factorialAuthService';
+import toast from 'react-hot-toast';
 import Button from '../components/common/Button/Button';
 import Input from '../components/common/Input/Input';
-import toast from 'react-hot-toast';
+import { useAuth } from '../hooks/useAuth';
+import { factorialAuthService } from '../services/api/factorialAuthService';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -34,19 +34,14 @@ export default function LoginPage() {
         ? await factorialAuthService.register(email, password)
         : await factorialAuthService.login(email, password);
 
-      if (response.success) {
-        console.log('✅ Login bem-sucedido:', response.data);
-        console.log('📦 Token salvo:', localStorage.getItem('token') ? 'Sim' : 'Não');
-        console.log('👤 User salvo:', localStorage.getItem('user') ? 'Sim' : 'Não');
-        
-        login(response.data);
-        toast.success(`Bem-vindo, ${response.data.user.name}!`);
-        
-        console.log('🔄 Navegando para /');
-        navigate('/', { replace: true });
-      } else {
+      if (!response.success) {
         toast.error(response.message);
+        return;
       }
+
+      await login(response.data);
+      toast.success(`Bem-vindo, ${response.data.user.name}!`);
+      navigate('/', { replace: true });
     } catch (error) {
       toast.error(error.message || 'Erro ao autenticar');
     } finally {
@@ -106,8 +101,8 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full"
               >
-                {isLoading 
-                  ? (isFirstAccess ? 'Criando conta...' : 'Autenticando...') 
+                {isLoading
+                  ? (isFirstAccess ? 'Criando conta...' : 'Autenticando...')
                   : (isFirstAccess ? 'Criar Conta' : 'Entrar')
                 }
               </Button>
@@ -127,7 +122,7 @@ export default function LoginPage() {
 
           <div className="mt-6 p-4 bg-light-panel2 dark:bg-dark-panel2 rounded-lg">
             <p className="text-xs text-light-muted dark:text-dark-muted">
-              <strong>Nota:</strong> {isFirstAccess 
+              <strong>Nota:</strong> {isFirstAccess
                 ? 'Seu email deve estar cadastrado no Factorial. A conta será criada após validação.'
                 : 'Use o email do Factorial e a senha que você criou no primeiro acesso.'
               }

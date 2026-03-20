@@ -1,26 +1,19 @@
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-
 export class RegisterWithFactorialUseCase {
-  constructor(factorialService, userRepository) {
+  constructor(factorialService, userRepository, supabaseAuthService) {
     this.factorialService = factorialService;
     this.userRepository = userRepository;
+    this.supabaseAuthService = supabaseAuthService;
   }
 
-  buildAuthResult(user) {
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        factorialEmployeeId: user.factorialEmployeeId,
-        artiaUserId: user.artiaUserId
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-    );
-
+  buildAuthResult(user, session) {
     return {
-      token,
+      token: session.access_token,
+      refreshToken: session.refresh_token,
+      session: {
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        expiresAt: session.expires_at || null
+      },
       user: {
         id: user.id,
         email: user.email,
@@ -32,7 +25,6 @@ export class RegisterWithFactorialUseCase {
   }
 
   async execute(email, password) {
-    // 1. Validar entrada
     if (!email || !password) {
       throw new Error('Email e senha são obrigatórios');
     }
@@ -41,7 +33,6 @@ export class RegisterWithFactorialUseCase {
       throw new Error('A senha deve ter no mínimo 8 caracteres');
     }
 
-    // 2. Buscar employee no Factorial por email
     const employee = await this.factorialService.getEmployeeByEmail(email);
 
     if (!employee) {
@@ -52,40 +43,29 @@ export class RegisterWithFactorialUseCase {
       throw new Error('Employee inativo no Factorial. Não é possível criar conta.');
     }
 
-    // 3. Verificar se usuário já existe no sistema
     const existingUser = await this.userRepository.findByEmail(email);
+    const existingAuthUser = existingUser ? await this.supabaseAuthService.getUserById(existingUser.id) : null;
 
-    if (existingUser) {
-      if (existingUser.passwordHash) {
-        throw new Error('Usuário já cadastrado. Faça login.');
-      }
-
-      const passwordHash = await bcrypt.hash(password, 10);
-      const claimedUser = await this.userRepository.updateIdentity(existingUser.id, {
-        name: employee.fullName,
-        factorialEmployeeId: employee.id.toString()
-      });
-
-      const completedUser = await this.userRepository.updatePassword(existingUser.id, passwordHash);
-      return this.buildAuthResult({
-        ...claimedUser,
-        ...completedUser,
-        passwordHash
-      });
+    if (existingAuthUser) {
+      throw new Error('Usuário já cadastrado. Faça login.');
     }
 
-    // 4. Criar hash bcrypt da senha
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-
-    // 5. Criar usuário no Supabase
-    const user = await this.userRepository.create({
+    const authUser = await this.supabaseAuthService.createUser({
+      id: existingUser?.id,
       email: employee.email,
-      name: employee.fullName,
-      passwordHash,
-      factorialEmployeeId: employee.id.toString()
+      password,
+      name: employee.fullName
     });
 
-    return this.buildAuthResult(user);
+    const profile = await this.userRepository.ensureProfile({
+      id: authUser.id,
+      email: employee.email,
+      name: employee.fullName,
+      factorialEmployeeId: String(employee.id),
+      artiaUserId: existingUser?.artiaUserId || null
+    });
+
+    const authData = await this.supabaseAuthService.signInWithPassword(employee.email, password);
+    return this.buildAuthResult(profile, authData.session);
   }
 }

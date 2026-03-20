@@ -1,9 +1,8 @@
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { config } from '../../../config/app.js';
-
 export class AuthController {
-  constructor(userRepository) {
+  constructor(registerWithFactorialUseCase, loginUseCase, supabaseAuthService, userRepository) {
+    this.registerWithFactorialUseCase = registerWithFactorialUseCase;
+    this.loginUseCase = loginUseCase;
+    this.supabaseAuthService = supabaseAuthService;
     this.userRepository = userRepository;
   }
 
@@ -18,93 +17,84 @@ export class AuthController {
         });
       }
 
-      const user = await this.userRepository.findByEmail(email);
+      const result = await this.loginUseCase.execute(email, password);
 
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials'
-        });
-      }
-
-      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-
-      if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials'
-        });
-      }
-
-      const token = jwt.sign(
-        { id: user.id, email: user.email },
-        config.jwtSecret,
-        { expiresIn: config.jwtExpiresIn }
-      );
-
-      const refreshToken = jwt.sign(
-        { id: user.id, email: user.email },
-        config.jwtRefreshSecret,
-        { expiresIn: config.jwtRefreshExpiresIn }
-      );
-
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         data: {
-          user: user.toJSON(),
-          token,
-          refreshToken
+          user: result.user,
+          token: result.token,
+          refreshToken: result.refreshToken,
+          session: result.session
         }
       });
     } catch (error) {
-      next(error);
+      if (error.message.includes('Credenciais inválidas')) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid credentials'
+        });
+      }
+
+      if (
+        error.message.includes('Conta inativa no Factorial') ||
+        error.message.includes('vínculo elegível no Factorial')
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: error.message
+        });
+      }
+
+      if (error.code === 'FACTORIAL_AUTH_FAILED' || error.message.includes('Integração com Factorial indisponível')) {
+        return res.status(503).json({
+          success: false,
+          message: 'Factorial integration unavailable. Check backend credentials.'
+        });
+      }
+
+      return next(error);
     }
   }
 
   async register(req, res, next) {
     try {
-      const { email, password, name } = req.body;
+      const { email, password } = req.body;
 
-      if (!email || !password || !name) {
+      if (!email || !password) {
         return res.status(400).json({
           success: false,
-          message: 'Email, password and name are required'
+          message: 'Email and password are required'
         });
       }
 
-      const existingUser = await this.userRepository.findByEmail(email);
+      const result = await this.registerWithFactorialUseCase.execute(email, password);
 
-      if (existingUser) {
+      return res.status(201).json({
+        success: true,
+        data: {
+          user: result.user,
+          token: result.token,
+          refreshToken: result.refreshToken,
+          session: result.session
+        }
+      });
+    } catch (error) {
+      if (error.message.includes('já cadastrado')) {
         return res.status(409).json({
           success: false,
           message: 'User already exists'
         });
       }
 
-      const passwordHash = await bcrypt.hash(password, 10);
+      if (error.code === 'FACTORIAL_AUTH_FAILED' || error.message.includes('Integração com Factorial indisponível')) {
+        return res.status(503).json({
+          success: false,
+          message: 'Factorial integration unavailable. Check backend credentials.'
+        });
+      }
 
-      const user = await this.userRepository.create({
-        id: this.generateId(),
-        email,
-        passwordHash,
-        name
-      });
-
-      const token = jwt.sign(
-        { id: user.id, email: user.email },
-        config.jwtSecret,
-        { expiresIn: config.jwtExpiresIn }
-      );
-
-      res.status(201).json({
-        success: true,
-        data: {
-          user: user.toJSON(),
-          token
-        }
-      });
-    } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -119,21 +109,21 @@ export class AuthController {
         });
       }
 
-      const decoded = jwt.verify(refreshToken, config.jwtRefreshSecret);
+      const data = await this.supabaseAuthService.refreshSession(refreshToken);
 
-      const newToken = jwt.sign(
-        { id: decoded.id, email: decoded.email },
-        config.jwtSecret,
-        { expiresIn: config.jwtExpiresIn }
-      );
-
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         data: {
-          token: newToken
+          token: data.session?.access_token,
+          refreshToken: data.session?.refresh_token,
+          session: {
+            accessToken: data.session?.access_token,
+            refreshToken: data.session?.refresh_token,
+            expiresAt: data.session?.expires_at || null
+          }
         }
       });
-    } catch (error) {
+    } catch (_error) {
       return res.status(401).json({
         success: false,
         message: 'Invalid refresh token'
@@ -141,7 +131,25 @@ export class AuthController {
     }
   }
 
-  generateId() {
-    return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  async me(req, res, next) {
+    try {
+      const profile = await this.userRepository.findById(req.user.id);
+
+      if (!profile) {
+        return res.status(404).json({
+          success: false,
+          message: 'User profile not found'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          user: profile.toJSON()
+        }
+      });
+    } catch (error) {
+      return next(error);
+    }
   }
 }

@@ -1,6 +1,8 @@
 import axios from 'axios';
+import { clearAuthState, getStoredToken } from '../auth/authStorage';
+import { supabase } from '../supabase/supabaseClient';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -9,28 +11,45 @@ const apiClient = axios.create({
   }
 });
 
+async function resolveAccessToken() {
+  const storedToken = getStoredToken();
+
+  if (storedToken) {
+    return storedToken;
+  }
+
+  const {
+    data: { session }
+  } = await supabase.auth.getSession();
+
+  return session?.access_token || null;
+}
+
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+  async (config) => {
+    const token = await resolveAccessToken();
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      await supabase.auth.signOut();
+      clearAuthState();
+
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
+
     return Promise.reject(error);
   }
 );

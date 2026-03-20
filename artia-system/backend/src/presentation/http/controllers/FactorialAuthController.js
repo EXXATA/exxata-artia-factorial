@@ -22,9 +22,11 @@ export class FactorialAuthController {
         data: result
       });
     } catch (error) {
-      if (error.message.includes('não encontrado no Factorial') || 
-          error.message.includes('inativo') ||
-          error.message.includes('já cadastrado')) {
+      if (
+        error.message.includes('não encontrado no Factorial') ||
+        error.message.includes('inativo') ||
+        error.message.includes('já cadastrado')
+      ) {
         return res.status(400).json({
           success: false,
           message: error.message
@@ -59,8 +61,11 @@ export class FactorialAuthController {
         });
       }
 
-      if (error.message.includes('Usuário sem senha definida')) {
-        return res.status(400).json({
+      if (
+        error.message.includes('Conta inativa no Factorial') ||
+        error.message.includes('vínculo elegível no Factorial')
+      ) {
+        return res.status(403).json({
           success: false,
           message: error.message
         });

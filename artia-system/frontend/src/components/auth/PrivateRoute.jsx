@@ -4,8 +4,6 @@ import { useAuth } from '../../hooks/useAuth';
 export default function PrivateRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
 
-  console.log('🔒 PrivateRoute:', { isLoading, isAuthenticated });
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -18,10 +16,8 @@ export default function PrivateRoute({ children }) {
   }
 
   if (!isAuthenticated) {
-    console.log('❌ Não autenticado, redirecionando para login');
     return <Navigate to="/login" replace />;
   }
 
-  console.log('✅ Autenticado, renderizando conteúdo protegido');
   return children;
 }
