@@ -116,3 +116,45 @@ export function buildProjectWeeklySyncSummary(events, weekDays) {
 
   return Array.from(summary.values()).sort((left, right) => right.totalMinutes - left.totalMinutes);
 }
+
+export function buildProjectWeeklyComparisonRows(projectSummaries = [], weekDays = []) {
+  return (projectSummaries || [])
+    .map((summary) => {
+      const byDay = Object.fromEntries(weekDays.map((day) => [day, {
+        totalMinutes: 0,
+        syncedMinutes: 0,
+        pendingMinutes: 0,
+        manualMinutes: 0,
+        remoteOnlyMinutes: 0,
+        remoteOnlyCount: 0,
+        factorialMinutes: 0
+      }]));
+
+      (summary.byDay || []).forEach((daySummary) => {
+        byDay[daySummary.day] = {
+          totalMinutes: Math.round(((daySummary.systemHours || 0) + (daySummary.remoteOnlyArtiaHours || 0)) * 60),
+          syncedMinutes: Math.round((daySummary.syncedSystemHours || 0) * 60),
+          pendingMinutes: Math.round((daySummary.pendingSystemHours || 0) * 60),
+          manualMinutes: Math.round((daySummary.manualSystemHours || 0) * 60),
+          remoteOnlyMinutes: Math.round((daySummary.remoteOnlyArtiaHours || 0) * 60),
+          remoteOnlyCount: Number(daySummary.remoteOnlyArtiaEntryCount || 0),
+          factorialMinutes: Math.round((daySummary.factorialHours || 0) * 60)
+        };
+      });
+
+      return {
+        projectKey: summary.projectKey,
+        projectId: summary.projectId,
+        projectNumber: summary.projectNumber,
+        projectName: summary.projectName,
+        projectLabel: summary.projectLabel || summary.projectName || summary.projectNumber || 'Sem projeto',
+        totalMinutes: Math.round(((summary.systemHours || 0) + (summary.remoteOnlyArtiaHours || 0)) * 60),
+        syncedMinutes: Math.round((summary.syncedSystemHours || 0) * 60),
+        pendingMinutes: Math.round((summary.pendingSystemHours || 0) * 60),
+        manualMinutes: Math.round((summary.manualSystemHours || 0) * 60),
+        remoteOnlyMinutes: Math.round((summary.remoteOnlyArtiaHours || 0) * 60),
+        byDay
+      };
+    })
+    .sort((left, right) => right.totalMinutes - left.totalMinutes);
+}

@@ -10,6 +10,13 @@ function normalizeText(value) {
     .trim();
 }
 
+function isSyntheticProjectNumber(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .startsWith('SEM-NUMERO-');
+}
+
 export class GetWorkedHoursComparisonUseCase {
   constructor(eventRepository, userRepository, integrationReadModelService, accessibleProjectCatalogService = null) {
     this.eventRepository = eventRepository;
@@ -103,6 +110,78 @@ export class GetWorkedHoursComparisonUseCase {
     };
   }
 
+  resolveVisualEnd(entry) {
+    if (entry?.end) {
+      return {
+        end: entry.end,
+        endEstimated: false,
+        isRenderableInCalendar: Boolean(entry.start)
+      };
+    }
+
+    if (!entry?.start || !Number.isFinite(Number(entry?.minutes)) || Number(entry.minutes) <= 0) {
+      return {
+        end: null,
+        endEstimated: false,
+        isRenderableInCalendar: false
+      };
+    }
+
+    const startDate = new Date(entry.start);
+    if (Number.isNaN(startDate.getTime())) {
+      return {
+        end: null,
+        endEstimated: false,
+        isRenderableInCalendar: false
+      };
+    }
+
+    const resolvedEnd = new Date(startDate.getTime() + (Number(entry.minutes) * 60000)).toISOString();
+    return {
+      end: resolvedEnd,
+      endEstimated: true,
+      isRenderableInCalendar: true
+    };
+  }
+
+  buildProjectDisplayLabel(projectDescriptor, rawProject = '') {
+    const descriptorNumber = String(projectDescriptor?.number || '').trim();
+    const descriptorName = String(projectDescriptor?.name || '').trim();
+    const rawLabel = String(rawProject || '').trim();
+
+    if (rawLabel && (!descriptorNumber || isSyntheticProjectNumber(descriptorNumber))) {
+      return rawLabel;
+    }
+
+    if (rawLabel) {
+      const normalizedRawLabel = normalizeText(rawLabel);
+      const normalizedDescriptorName = normalizeText(descriptorName);
+      const normalizedComposite = normalizeText(`${descriptorNumber} ${descriptorName}`);
+
+      if (normalizedRawLabel === normalizedComposite || normalizedRawLabel === normalizedDescriptorName) {
+        return rawLabel;
+      }
+    }
+
+    if (descriptorName) {
+      if (!descriptorNumber || isSyntheticProjectNumber(descriptorNumber)) {
+        return descriptorName;
+      }
+
+      if (normalizeText(descriptorName).startsWith(normalizeText(descriptorNumber))) {
+        return descriptorName;
+      }
+
+      return `${descriptorNumber} - ${descriptorName}`;
+    }
+
+    if (descriptorNumber && !isSyntheticProjectNumber(descriptorNumber)) {
+      return descriptorNumber;
+    }
+
+    return rawLabel || descriptorName || 'Sem projeto';
+  }
+
   async loadProjectCatalogForUser(user, options = {}) {
     if (this.accessibleProjectCatalogService) {
       return this.accessibleProjectCatalogService.getAccessibleProjectCatalog(user, {
@@ -190,6 +269,7 @@ export class GetWorkedHoursComparisonUseCase {
     const startDate = new Date(event.start);
     const endDate = new Date(event.end);
     const minutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+    const projectDisplayLabel = this.buildProjectDisplayLabel(projectDescriptor, event.project);
 
     return {
       id: event.id,
@@ -203,7 +283,8 @@ export class GetWorkedHoursComparisonUseCase {
       projectId: projectDescriptor.id,
       projectNumber: projectDescriptor.number,
       projectName: projectDescriptor.name,
-      projectLabel: projectDescriptor.label,
+      projectLabel: projectDisplayLabel,
+      projectDisplayLabel,
       activityId: event.activityId,
       activityLabel: event.activityLabel,
       notes: event.notes || '',
@@ -220,11 +301,16 @@ export class GetWorkedHoursComparisonUseCase {
   }
 
   serializeArtiaEntry(entry, projectDescriptor) {
+    const visualEnd = this.resolveVisualEnd(entry);
+    const projectDisplayLabel = this.buildProjectDisplayLabel(projectDescriptor, entry.project);
+
     return {
       id: entry.id,
       day: entry.date,
       start: entry.start,
-      end: entry.end,
+      end: visualEnd.end,
+      endEstimated: visualEnd.endEstimated,
+      isRenderableInCalendar: visualEnd.isRenderableInCalendar,
       minutes: entry.minutes,
       hours: entry.hours,
       project: entry.project,
@@ -232,8 +318,10 @@ export class GetWorkedHoursComparisonUseCase {
       projectId: projectDescriptor.id,
       projectNumber: projectDescriptor.number,
       projectName: projectDescriptor.name,
-      projectLabel: projectDescriptor.label,
+      projectLabel: projectDisplayLabel,
+      projectDisplayLabel,
       activity: entry.activity,
+      activityLabel: entry.activity,
       activityId: entry.activityId,
       notes: entry.notes || '',
       status: entry.status || null,

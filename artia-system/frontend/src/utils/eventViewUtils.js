@@ -82,6 +82,57 @@ export function getEventPosition(event) {
   };
 }
 
+export function getClampedEventPosition(event, {
+  gridStartMinutes = CALENDAR_GRID_START_MINUTES,
+  gridEndMinutes = CALENDAR_GRID_END_MINUTES
+} = {}) {
+  if (!event?.start || !event?.end) {
+    return {
+      isVisible: false,
+      isClampedStart: false,
+      isClampedEnd: false,
+      top: 0,
+      height: 0
+    };
+  }
+
+  const startDate = new Date(event.start);
+  const duration = calculateDuration(event.start, event.end);
+  if (Number.isNaN(startDate.getTime()) || duration <= 0) {
+    return {
+      isVisible: false,
+      isClampedStart: false,
+      isClampedEnd: false,
+      top: 0,
+      height: 0
+    };
+  }
+
+  const startMinutes = (startDate.getHours() * 60) + startDate.getMinutes();
+  const endMinutes = startMinutes + duration;
+  const clampedStart = Math.max(gridStartMinutes, startMinutes);
+  const clampedEnd = Math.min(gridEndMinutes, endMinutes);
+  const isVisible = clampedEnd > clampedStart;
+
+  if (!isVisible) {
+    return {
+      isVisible: false,
+      isClampedStart: startMinutes < gridStartMinutes,
+      isClampedEnd: endMinutes > gridEndMinutes,
+      top: 0,
+      height: 0
+    };
+  }
+
+  return {
+    isVisible: true,
+    isClampedStart: startMinutes < gridStartMinutes,
+    isClampedEnd: endMinutes > gridEndMinutes,
+    top: ((clampedStart - gridStartMinutes) / SLOT_MINUTES) * ROW_HEIGHT,
+    height: Math.max(((clampedEnd - clampedStart) / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
+  };
+}
+
 export function clampCalendarMinutes(totalMinutes, min = CALENDAR_GRID_START_MINUTES, max = CALENDAR_GRID_END_MINUTES) {
   return Math.max(min, Math.min(max, totalMinutes));
 }

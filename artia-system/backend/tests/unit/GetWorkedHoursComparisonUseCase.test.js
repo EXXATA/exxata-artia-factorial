@@ -213,3 +213,108 @@ test('GetWorkedHoursComparisonUseCase limita o escopo aos projetos acessiveis do
   assert.equal(result.dailyDetails[0].artiaEntries.length, 1);
   assert.equal(result.stats.projectCount, 1);
 });
+
+test('GetWorkedHoursComparisonUseCase resolve fim remoto e evita duplicar o label do projeto', async () => {
+  const userRepository = {
+    async findById() {
+      return {
+        id: 'user-1',
+        email: 'andre.baptista@exxata.com.br',
+        factorialEmployeeId: '1370321',
+        artiaUserId: '244826'
+      };
+    }
+  };
+
+  const eventRepository = {
+    async findByDateRange() {
+      return [];
+    },
+    async findAll() {
+      return [];
+    }
+  };
+
+  const integrationReadModelService = {
+    async getProjectCatalog() {
+      return [
+        { id: '6207936', number: '1358', name: '1358 - CONCREJATO x RIO+ SANEAMENTO' },
+        { id: '159219', number: 'SEM-NUMERO-159219', name: '0000 - Gerenciamento' }
+      ];
+    },
+    async getFactorialDailyHours() {
+      return {
+        '2026-03-09': 8
+      };
+    },
+    async getArtiaSnapshots() {
+      return {
+        entries: [
+          {
+            id: 'artia-1',
+            date: '2026-03-09',
+            start: '2026-03-09T16:40:00.000Z',
+            end: null,
+            minutes: 90,
+            hours: 1.5,
+            project: '1358 - CONCREJATO x RIO+ SANEAMENTO',
+            projectId: '6207936',
+            activity: '6.6 - Redacao de Carta a Pedido do Cliente',
+            activityId: '31535373',
+            notes: 'Carta resposta'
+          },
+          {
+            id: 'artia-2',
+            date: '2026-03-09',
+            start: '2026-03-09T19:10:00.000Z',
+            end: null,
+            minutes: 50,
+            hours: 0.83,
+            project: '0000 - Gerenciamento',
+            projectId: '159219',
+            activity: '107 - Outros',
+            activityId: '30041338',
+            notes: 'Alinhamento'
+          }
+        ],
+        dailyHoursByDay: {
+          '2026-03-09': { workedHours: 2.33, entryCount: 2 }
+        },
+        source: { tableName: 'organization_9115_time_entries' },
+        reason: null
+      };
+    },
+    async decorateEventsWithSyncStatus(events) {
+      return events;
+    }
+  };
+
+  const useCase = new GetWorkedHoursComparisonUseCase(
+    eventRepository,
+    userRepository,
+    integrationReadModelService,
+    {
+      async getAccessibleProjectCatalog() {
+        return [
+          { id: '6207936', number: '1358', name: '1358 - CONCREJATO x RIO+ SANEAMENTO' },
+          { id: '159219', number: 'SEM-NUMERO-159219', name: '0000 - Gerenciamento' }
+        ];
+      }
+    }
+  );
+
+  const result = await useCase.execute('user-1', {
+    startDate: '2026-03-09',
+    endDate: '2026-03-09'
+  });
+
+  const [firstEntry, secondEntry] = result.dailyDetails[0].remoteOnlyArtiaEntries;
+
+  assert.equal(firstEntry.end, '2026-03-09T18:10:00.000Z');
+  assert.equal(firstEntry.endEstimated, true);
+  assert.equal(firstEntry.projectDisplayLabel, '1358 - CONCREJATO x RIO+ SANEAMENTO');
+
+  assert.equal(secondEntry.end, '2026-03-09T20:00:00.000Z');
+  assert.equal(secondEntry.endEstimated, true);
+  assert.equal(secondEntry.projectDisplayLabel, '0000 - Gerenciamento');
+});

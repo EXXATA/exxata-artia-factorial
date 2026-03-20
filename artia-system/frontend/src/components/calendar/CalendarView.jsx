@@ -3,9 +3,10 @@ import { useEvents, useMoveEvent } from '../../hooks/useEvents';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
 import EventModal from './EventModal';
+import ArtiaRemoteEntriesModal from './ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
-import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getDefaultDraftFromSlot, getDraftFromRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
+import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getClampedEventPosition, getDefaultDraftFromSlot, getDraftFromRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
 import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../utils/artiaSyncUtils';
 
 const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -20,6 +21,9 @@ export default function CalendarView() {
   const [draftEvent, setDraftEvent] = useState(null);
   const [selection, setSelection] = useState(null);
   const [interaction, setInteraction] = useState(null);
+  const [selectedRemoteEntries, setSelectedRemoteEntries] = useState([]);
+  const [remoteModalTitle, setRemoteModalTitle] = useState('Lancamentos do Artia');
+  const [remoteModalSubtitle, setRemoteModalSubtitle] = useState('Visualizacao somente leitura dos lancamentos encontrados no Artia via MySQL.');
   const dayColumnRefs = useRef({});
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
@@ -75,6 +79,18 @@ export default function CalendarView() {
   const closeModal = () => {
     setSelectedEvent(null);
     setDraftEvent(null);
+  };
+
+  const closeRemoteEntriesModal = () => {
+    setSelectedRemoteEntries([]);
+    setRemoteModalTitle('Lancamentos do Artia');
+    setRemoteModalSubtitle('Visualizacao somente leitura dos lancamentos encontrados no Artia via MySQL.');
+  };
+
+  const openRemoteEntriesModal = (entries, { title, subtitle } = {}) => {
+    setSelectedRemoteEntries(entries || []);
+    setRemoteModalTitle(title || 'Lancamentos do Artia');
+    setRemoteModalSubtitle(subtitle || 'Visualizacao somente leitura dos lancamentos encontrados no Artia via MySQL.');
   };
 
   const finishSelection = (activeSelection) => {
@@ -401,6 +417,10 @@ export default function CalendarView() {
                   pendingMinutes: 0,
                   manualMinutes: 0
                 };
+                const artiaMinutes = Math.round((dayComparison?.artiaHours || 0) * 60);
+                const hiddenRemoteEntries = (dayComparison?.remoteOnlyArtiaEntries || []).filter((entry) => (
+                  !getClampedEventPosition(entry).isVisible
+                ));
 
                 return (
                   <div key={dayIso} className={`border-r border-slate-200 px-3 py-3 dark:border-white/10 ${isToday(day) ? 'bg-primary/5' : ''}`}>
@@ -415,7 +435,7 @@ export default function CalendarView() {
                         Factorial: <span className="font-semibold text-slate-900 dark:text-white">{formatHoursFromComparison(dayComparison?.factorialHours)}</span>
                       </span>
                       <span className="ui-chip ui-chip-success">
-                        Artia: <span className="font-semibold">{formatWorkedTime(syncBreakdown.syncedMinutes)}</span>
+                        Artia: <span className="font-semibold">{formatWorkedTime(artiaMinutes)}</span>
                       </span>
                       {syncBreakdown.pendingMinutes > 0 && (
                         <span className="ui-chip">
@@ -426,6 +446,18 @@ export default function CalendarView() {
                         <span className="ui-chip ui-chip-violet">
                           Só Artia: <span className="font-semibold">{dayComparison.remoteOnlyArtiaEntries.length}</span>
                         </span>
+                      ) : null}
+                      {hiddenRemoteEntries.length ? (
+                        <button
+                          type="button"
+                          onClick={() => openRemoteEntriesModal(hiddenRemoteEntries, {
+                            title: `Lancamentos do Artia em ${day.toLocaleDateString('pt-BR')}`,
+                            subtitle: 'Itens fora da grade visivel do calendario. Visualizacao somente leitura.'
+                          })}
+                          className="ui-chip border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
+                        >
+                          Fora da grade: <span className="font-semibold">{hiddenRemoteEntries.length}</span>
+                        </button>
                       ) : null}
                     </div>
                   </div>
@@ -455,8 +487,13 @@ export default function CalendarView() {
                     .filter((event) => event.day === dayIso)
                     .sort((a, b) => new Date(a.start) - new Date(b.start));
                   const remoteOnlyEntries = (dayComparison?.remoteOnlyArtiaEntries || [])
-                    .filter((entry) => entry.start && entry.end)
                     .sort((a, b) => new Date(a.start) - new Date(b.start));
+                  const remoteEntryLayouts = remoteOnlyEntries
+                    .map((entry) => ({
+                      entry,
+                      position: getClampedEventPosition(entry)
+                    }))
+                    .filter(({ position }) => position.isVisible);
 
                   return (
                     <div
@@ -483,26 +520,48 @@ export default function CalendarView() {
                       {renderSelectionPreview(dayIso)}
                       {renderInteractionPreview(dayIso)}
 
-                      {remoteOnlyEntries.map((entry) => {
-                        const position = getEventPosition({ start: entry.start, end: entry.end });
+                      {remoteEntryLayouts.map(({ entry, position }) => {
+                        const hasTruncation = position.isClampedStart || position.isClampedEnd;
 
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={`artia-only-${entry.id}`}
-                            className="absolute left-1.5 right-1.5 z-0 overflow-hidden rounded-2xl border border-violet-300/40 bg-[linear-gradient(180deg,rgba(139,92,246,0.1),rgba(139,92,246,0.25))] dark:bg-[linear-gradient(180deg,rgba(139,92,246,0.15),rgba(49,46,129,0.5))] px-2 py-2 text-left shadow-sm opacity-90 cursor-not-allowed"
+                            onMouseDown={(mouseEvent) => {
+                              mouseEvent.preventDefault();
+                              mouseEvent.stopPropagation();
+                            }}
+                            onClick={(mouseEvent) => {
+                              mouseEvent.stopPropagation();
+                              openRemoteEntriesModal([entry], {
+                                title: 'Lancamento do Artia',
+                                subtitle: 'Visualizacao somente leitura do lancamento remoto.'
+                              });
+                            }}
+                            className="absolute left-1.5 right-1.5 z-[1] overflow-hidden rounded-2xl border border-violet-300/40 bg-[linear-gradient(180deg,rgba(139,92,246,0.1),rgba(139,92,246,0.25))] dark:bg-[linear-gradient(180deg,rgba(139,92,246,0.15),rgba(49,46,129,0.5))] px-2 py-2 text-left shadow-sm opacity-90"
                             style={{ top: position.top + 2, height: position.height }}
                             title="Lançamento remoto do Artia (não editável)"
                           >
                             <div className="inline-flex rounded-full bg-violet-600/10 dark:bg-black/30 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:text-violet-100 shadow-sm border border-violet-500/20">
                               {extractTimeValue(entry.start)} – {extractTimeValue(entry.end)}
                             </div>
-                            <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">{entry.projectLabel || entry.project || 'Projeto Artia'}</div>
-                            <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">{entry.activity || 'Atividade Artia'}</div>
+                            <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">{entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'}</div>
+                            <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">{entry.activityLabel || entry.activity || 'Atividade Artia'}</div>
+                            {entry.endEstimated ? (
+                              <div className="mt-1 inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-100">
+                                Horario estimado
+                              </div>
+                            ) : null}
+                            {hasTruncation ? (
+                              <div className="mt-1 inline-flex rounded-full border border-slate-300/40 bg-white/60 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-white/10 dark:bg-black/20 dark:text-slate-200">
+                                Continua fora da grade
+                              </div>
+                            ) : null}
                             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-200">
                               <span className="h-1.5 w-1.5 rounded-full bg-violet-500"></span>
                               Lançado no Artia
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
 
@@ -576,6 +635,13 @@ export default function CalendarView() {
       </div>
 
       <EventModal isOpen={Boolean(selectedEvent || draftEvent)} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
+      <ArtiaRemoteEntriesModal
+        isOpen={Boolean(selectedRemoteEntries.length)}
+        onClose={closeRemoteEntriesModal}
+        entries={selectedRemoteEntries}
+        title={remoteModalTitle}
+        subtitle={remoteModalSubtitle}
+      />
     </div>
   );
 }

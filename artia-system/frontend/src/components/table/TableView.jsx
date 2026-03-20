@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import EventModal from '../calendar/EventModal';
+import ArtiaRemoteEntriesModal from '../calendar/ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { useEvents } from '../../hooks/useEvents';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
@@ -17,6 +18,7 @@ export default function TableView() {
   const [activityFilter, setActivityFilter] = useState('ALL');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [draftEvent, setDraftEvent] = useState(null);
+  const [selectedRemoteEntries, setSelectedRemoteEntries] = useState([]);
 
   const { data: eventsData, isLoading } = useEvents({
     startDate,
@@ -93,16 +95,19 @@ export default function TableView() {
         rowType: 'artia_only',
         day: detail.date,
         id: entry.id,
-        project: entry.projectLabel || entry.project || 'Projeto Artia',
+        project: entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia',
         start: entry.start,
         end: entry.end,
         effortMinutes: Math.round((Number(entry.hours) || 0) * 60),
-        activityLabel: entry.activity || 'Atividade Artia',
+        activityLabel: entry.activityLabel || entry.activity || 'Atividade Artia',
         notes: entry.notes || '',
         activityId: entry.activityId || '—',
         sourceStatus: entry.status || 'Somente Artia',
         artiaRemoteEntryId: entry.id,
-        artiaRemoteHours: entry.hours || 0
+        artiaRemoteHours: entry.hours || 0,
+        endEstimated: Boolean(entry.endEstimated),
+        sourceTable: entry.sourceTable || null,
+        projectDisplayLabel: entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'
       })))
       .sort((a, b) => {
         const byDay = a.day.localeCompare(b.day);
@@ -137,6 +142,10 @@ export default function TableView() {
   const closeModal = () => {
     setSelectedEvent(null);
     setDraftEvent(null);
+  };
+
+  const closeRemoteModal = () => {
+    setSelectedRemoteEntries([]);
   };
 
   if (isLoading) {
@@ -226,11 +235,19 @@ export default function TableView() {
                       badgeClassName: 'border-violet-400/30 bg-violet-500/10 text-violet-100'
                     };
                   const dayComparison = dailyDetailsByDate[event.day] || null;
+                  const rowDayMinutes = event.rowType === 'system'
+                    ? (minutesByDay[event.day] || 0)
+                    : Math.round((dayComparison?.artiaHours || 0) * 60);
 
                   return (
                     <tr
                       key={`${event.rowType}-${event.id}`}
                       onClick={() => {
+                        if (event.rowType === 'artia_only') {
+                          setSelectedRemoteEntries([event]);
+                          return;
+                        }
+
                         if (event.rowType !== 'system') {
                           return;
                         }
@@ -238,7 +255,7 @@ export default function TableView() {
                         setDraftEvent(null);
                         setSelectedEvent(event);
                       }}
-                      className={`ui-table-row ${event.rowType === 'system' ? 'cursor-pointer' : 'bg-violet-50 dark:bg-violet-500/5'}`}
+                      className={`ui-table-row ${event.rowType === 'system' || event.rowType === 'artia_only' ? 'cursor-pointer' : ''} ${event.rowType === 'artia_only' ? 'bg-violet-50 dark:bg-violet-500/5' : ''}`}
                     >
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{formatDateBR(event.day)}</td>
                       <td className="px-4 py-3 text-xs">
@@ -250,14 +267,21 @@ export default function TableView() {
                       <td className="px-4 py-3 ui-mono">{extractTimeValue(event.start)}</td>
                       <td className="px-4 py-3 ui-mono">{extractTimeValue(event.end)}</td>
                       <td className="px-4 py-3 ui-mono text-primary dark:text-primary-light">{formatWorkedTime(effort)}</td>
-                      <td className="px-4 py-3 ui-mono text-emerald-700 dark:text-emerald-200">{formatWorkedTime(minutesByDay[event.day] || 0)}</td>
+                      <td className="px-4 py-3 ui-mono text-emerald-700 dark:text-emerald-200">{formatWorkedTime(rowDayMinutes)}</td>
                       <td className="px-4 py-3 ui-mono text-slate-600 dark:text-slate-300">{formatWorkedTime(Math.round((dayComparison?.factorialHours || 0) * 60))}</td>
                       <td className="px-4 py-3">{event.activityLabel}</td>
                       <td className="max-w-[260px] truncate px-4 py-3 text-slate-500 dark:text-slate-400">{event.notes || '—'}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${syncPresentation.badgeClassName}`}>
-                          {syncPresentation.label}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${syncPresentation.badgeClassName}`}>
+                            {syncPresentation.label}
+                          </span>
+                          {event.endEstimated ? (
+                            <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-100">
+                              Horario estimado
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
                         {event.artiaRemoteEntryId ? (
@@ -279,9 +303,16 @@ export default function TableView() {
         </div>
       </section>
 
-      <div className="text-sm text-slate-500 dark:text-slate-400">Dica: clique em uma linha para editar o evento.</div>
+      <div className="text-sm text-slate-500 dark:text-slate-400">Dica: clique em uma linha do sistema para editar ou em uma linha do Artia para consultar o lancamento remoto.</div>
 
       <EventModal isOpen={Boolean(selectedEvent || draftEvent)} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
+      <ArtiaRemoteEntriesModal
+        isOpen={Boolean(selectedRemoteEntries.length)}
+        onClose={closeRemoteModal}
+        entries={selectedRemoteEntries}
+        title="Lancamento remoto do Artia"
+        subtitle="Visualizacao somente leitura do lancamento remoto encontrado via MySQL."
+      />
     </div>
   );
 }
