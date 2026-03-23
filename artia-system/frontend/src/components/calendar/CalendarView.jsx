@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useEvents, useMoveEvent } from '../../hooks/useEvents';
-import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMoveEvent } from '../../hooks/useEvents';
 import { useProjects } from '../../hooks/useProjects';
+import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
 import EventModal from './EventModal';
 import ArtiaRemoteEntriesModal from './ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
-import { getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
-import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getClampedEventPosition, getDefaultDraftFromSlot, getDraftFromRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
+import { addDays, getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
+import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getClampedEventPosition, getDefaultDraftFromSlot, getDraftFromRange, getEventMinuteRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
 import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../utils/artiaSyncUtils';
 
 const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -25,18 +26,25 @@ export default function CalendarView() {
   const [remoteModalTitle, setRemoteModalTitle] = useState('Lancamentos do Artia');
   const [remoteModalSubtitle, setRemoteModalSubtitle] = useState('Visualizacao somente leitura dos lancamentos encontrados no Artia via MySQL.');
   const dayColumnRefs = useRef({});
+  const queryClient = useQueryClient();
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
   const startDate = formatDateISO(weekDays[0]);
   const endDate = formatDateISO(weekDays[6]);
 
-  const { data: eventsData, isLoading } = useEvents({ startDate, endDate });
+  const {
+    data: weekViewData,
+    isLoading,
+    isFetching,
+    refresh,
+    userScopeKey
+  } = useWeekViewData({ startDate, endDate, enabled: Boolean(startDate && endDate) });
   const { data: projectsData, isLoading: projectsLoading } = useProjects();
-  const { data: comparisonData } = useWorkedHoursComparison({ startDate, endDate, enabled: Boolean(startDate && endDate) });
   const moveMutation = useMoveEvent();
 
-  const events = eventsData?.data || [];
+  const events = weekViewData?.events || [];
   const projects = projectsData?.data || [];
+  const comparisonData = weekViewData || null;
   const dailyDetailsByDate = useMemo(
     () => Object.fromEntries((comparisonData?.dailyDetails || []).map((detail) => [detail.date, detail])),
     [comparisonData]
@@ -47,6 +55,21 @@ export default function CalendarView() {
   const slots = useMemo(() => Array.from({ length: slotCount }, (_, index) => index), [slotCount]);
 
   const getColumnElement = (dayIso) => dayColumnRefs.current[dayIso] || null;
+
+  useEffect(() => {
+    if (!userScopeKey || weekDays.length === 0) {
+      return;
+    }
+
+    void prefetchWeekViewData(queryClient, userScopeKey, {
+      startDate: formatDateISO(addDays(weekDays[0], -7)),
+      endDate: formatDateISO(addDays(weekDays[6], -7))
+    });
+    void prefetchWeekViewData(queryClient, userScopeKey, {
+      startDate: formatDateISO(addDays(weekDays[0], 7)),
+      endDate: formatDateISO(addDays(weekDays[6], 7))
+    });
+  }, [queryClient, userScopeKey, weekDays]);
 
   const getMinutesFromPointer = (dayIso, clientY, strategy = 'round') => {
     const column = getColumnElement(dayIso);
@@ -67,13 +90,8 @@ export default function CalendarView() {
   };
 
   const getEventBounds = (event) => {
-    const start = new Date(event.start);
-    const end = new Date(event.end);
-
-    return {
-      startMinutes: start.getHours() * 60 + start.getMinutes(),
-      endMinutes: end.getHours() * 60 + end.getMinutes()
-    };
+    const { endMinutes, startMinutes } = getEventMinuteRange(event);
+    return { startMinutes, endMinutes };
   };
 
   const closeModal = () => {
@@ -345,7 +363,7 @@ export default function CalendarView() {
     );
   };
 
-  if (isLoading) {
+  if (isLoading && !weekViewData) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="ui-empty-state max-w-md px-6 py-5">
@@ -360,13 +378,13 @@ export default function CalendarView() {
       <div className="ui-toolbar">
         <div className="ui-toolbar-row">
           <div className="ui-toolbar-group">
-          <button onClick={handlePrevWeek} className="app-action-button">
+          <button onClick={handlePrevWeek} disabled={isFetching} className="app-action-button disabled:opacity-50">
             Sem. anterior
           </button>
-          <button onClick={handleToday} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark">
+          <button onClick={handleToday} disabled={isFetching} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50">
             Hoje
           </button>
-          <button onClick={handleNextWeek} className="app-action-button">
+          <button onClick={handleNextWeek} disabled={isFetching} className="app-action-button disabled:opacity-50">
             Prox. semana
           </button>
           </div>
@@ -379,6 +397,12 @@ export default function CalendarView() {
             <span className={`h-2.5 w-2.5 rounded-full ${projectsLoading ? 'bg-amber-400' : 'bg-emerald-500'}`} />
             <span>{projectsLoading ? 'Base Artia MySQL carregando' : `Base Artia MySQL · ${projects.length} projetos`}</span>
           </div>
+          {isFetching ? (
+            <div className="ui-chip ui-chip-accent">
+              <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              Atualizando semana
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -386,6 +410,8 @@ export default function CalendarView() {
         <span className="ui-chip">Arraste na grade para criar</span>
         <span className="ui-chip">Arraste o bloco para mover</span>
         <span className="ui-chip">Arraste as bordas para redimensionar</span>
+        <span className="ui-chip">Grade completa: 00:00 - 24:00</span>
+        <span className="ui-chip">Precisao: 1 minuto</span>
         <span className="ui-chip ui-chip-success"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Sincronizado</span>
         <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Marcado manualmente</span>
         <span className="ui-chip"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
@@ -396,6 +422,10 @@ export default function CalendarView() {
       <WorkedHoursRangePanel
         startDate={startDate}
         endDate={endDate}
+        stats={comparisonData?.stats || null}
+        isLoading={isLoading && !comparisonData}
+        isFetching={isFetching}
+        onRefresh={refresh}
         title="Conciliação diária da semana"
         subtitle="Validação dia a dia entre Factorial, sistema e Artia na semana visível"
       />
@@ -418,7 +448,7 @@ export default function CalendarView() {
                   manualMinutes: 0
                 };
                 const artiaMinutes = Math.round((dayComparison?.artiaHours || 0) * 60);
-                const hiddenRemoteEntries = (dayComparison?.remoteOnlyArtiaEntries || []).filter((entry) => (
+                const unpositionedRemoteEntries = (dayComparison?.remoteOnlyArtiaEntries || []).filter((entry) => (
                   !getClampedEventPosition(entry).isVisible
                 ));
 
@@ -447,16 +477,16 @@ export default function CalendarView() {
                           Só Artia: <span className="font-semibold">{dayComparison.remoteOnlyArtiaEntries.length}</span>
                         </span>
                       ) : null}
-                      {hiddenRemoteEntries.length ? (
+                      {unpositionedRemoteEntries.length ? (
                         <button
                           type="button"
-                          onClick={() => openRemoteEntriesModal(hiddenRemoteEntries, {
-                            title: `Lancamentos do Artia em ${day.toLocaleDateString('pt-BR')}`,
-                            subtitle: 'Itens fora da grade visivel do calendario. Visualizacao somente leitura.'
+                          onClick={() => openRemoteEntriesModal(unpositionedRemoteEntries, {
+                            title: `Lancamentos do Artia sem posicao em ${day.toLocaleDateString('pt-BR')}`,
+                            subtitle: 'Itens sem horario valido para posicionamento na grade. Visualizacao somente leitura.'
                           })}
                           className="ui-chip border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
                         >
-                          Fora da grade: <span className="font-semibold">{hiddenRemoteEntries.length}</span>
+                          Sem posicao: <span className="font-semibold">{unpositionedRemoteEntries.length}</span>
                         </button>
                       ) : null}
                     </div>
@@ -521,8 +551,6 @@ export default function CalendarView() {
                       {renderInteractionPreview(dayIso)}
 
                       {remoteEntryLayouts.map(({ entry, position }) => {
-                        const hasTruncation = position.isClampedStart || position.isClampedEnd;
-
                         return (
                           <button
                             type="button"
@@ -543,18 +571,13 @@ export default function CalendarView() {
                             title="Lançamento remoto do Artia (não editável)"
                           >
                             <div className="inline-flex rounded-full bg-violet-600/10 dark:bg-black/30 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:text-violet-100 shadow-sm border border-violet-500/20">
-                              {extractTimeValue(entry.start)} – {extractTimeValue(entry.end)}
+                              {extractTimeValue(entry.start, entry.day)} – {extractTimeValue(entry.end, entry.day)}
                             </div>
                             <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">{entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'}</div>
                             <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">{entry.activityLabel || entry.activity || 'Atividade Artia'}</div>
                             {entry.endEstimated ? (
                               <div className="mt-1 inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-100">
                                 Horario estimado
-                              </div>
-                            ) : null}
-                            {hasTruncation ? (
-                              <div className="mt-1 inline-flex rounded-full border border-slate-300/40 bg-white/60 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-white/10 dark:bg-black/20 dark:text-slate-200">
-                                Continua fora da grade
                               </div>
                             ) : null}
                             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-200">
@@ -601,7 +624,7 @@ export default function CalendarView() {
                               />
                             ) : null}
                             <div className="inline-flex rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                              {extractTimeValue(event.start)} – {extractTimeValue(event.end)}
+                              {extractTimeValue(event.start, event.day)} – {extractTimeValue(event.end, event.day)}
                             </div>
                             <div className="mt-2 truncate text-sm font-semibold text-white">{event.project}</div>
                             <div className="truncate text-xs text-slate-300">{event.activityLabel}</div>

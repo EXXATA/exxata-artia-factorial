@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import Button from '../common/Button/Button';
+import MinuteTimeField from './MinuteTimeField';
 import { useCreateEvent, useDeleteEvent, useUpdateEvent } from '../../hooks/useEvents';
 import { useProjects } from '../../hooks/useProjects';
 import toast from 'react-hot-toast';
 import { calculateDuration, formatDuration } from '../../utils/timeUtils';
-import { buildTimeOptions, combineDayAndTime, extractTimeValue, normalizeProjectInput } from '../../utils/eventViewUtils';
+import { combineDayAndTime, extractTimeValue, normalizeProjectInput } from '../../utils/eventViewUtils';
 
 const CLIPBOARD_KEY = 'artia_event_modal_clipboard';
 const WORKPLACE_OPTIONS = ['Escritorio', 'Casa', 'Cliente'];
@@ -12,8 +13,8 @@ const WORKPLACE_OPTIONS = ['Escritorio', 'Casa', 'Cliente'];
 function createInitialFormData(event, draft) {
   return {
     day: event?.day || draft?.day || '',
-    startTime: event?.start ? extractTimeValue(event.start) : draft?.startTime || '08:00',
-    endTime: event?.end ? extractTimeValue(event.end) : draft?.endTime || '08:50',
+    startTime: event?.start ? extractTimeValue(event.start, event?.day) : draft?.startTime || '08:00',
+    endTime: event?.end ? extractTimeValue(event.end, event?.day) : draft?.endTime || '08:50',
     project: normalizeProjectInput(event?.project || draft?.project || ''),
     activityLabel: event?.activityLabel || draft?.activityLabel || '',
     notes: event?.notes || draft?.notes || '',
@@ -65,7 +66,6 @@ export default function EventModal({ isOpen, onClose, event, draft }) {
   const deleteMutation = useDeleteEvent();
   const { data: projectsData, isLoading: projectsLoading } = useProjects();
   const projects = projectsData?.data || [];
-  const timeOptions = useMemo(() => buildTimeOptions(), []);
 
   const normalizedProject = useMemo(() => normalizeProjectInput(formData.project), [formData.project]);
   const selectedProject = useMemo(
@@ -297,33 +297,20 @@ export default function EventModal({ isOpen, onClose, event, draft }) {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="ui-label">Inicio</label>
-                  <select
-                    value={formData.startTime}
-                    onChange={(inputEvent) => setFormData((current) => ({ ...current, startTime: inputEvent.target.value }))}
-                    className="ui-input w-full"
-                    disabled={isMutating || isHistoricalReadOnly}
-                  >
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                </div>
+                <MinuteTimeField
+                  label="Inicio"
+                  value={formData.startTime}
+                  onChange={(value) => setFormData((current) => ({ ...current, startTime: value }))}
+                  disabled={isMutating || isHistoricalReadOnly}
+                />
 
-                <div className="space-y-2">
-                  <label className="ui-label">Fim</label>
-                  <select
-                    value={formData.endTime}
-                    onChange={(inputEvent) => setFormData((current) => ({ ...current, endTime: inputEvent.target.value }))}
-                    className="ui-input w-full"
-                    disabled={isMutating || isHistoricalReadOnly}
-                  >
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                </div>
+                <MinuteTimeField
+                  label="Fim"
+                  value={formData.endTime}
+                  onChange={(value) => setFormData((current) => ({ ...current, endTime: value }))}
+                  allowDayEnd
+                  disabled={isMutating || isHistoricalReadOnly}
+                />
               </div>
 
               <div className="ui-chip ui-chip-accent">

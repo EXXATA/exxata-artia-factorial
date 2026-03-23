@@ -1,10 +1,11 @@
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class UpdateEventUseCase {
-  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService) {
+  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService, userReadProjectionService = null) {
     this.eventRepository = eventRepository;
     this.eventValidationService = eventValidationService;
     this.accessibleProjectCatalogService = accessibleProjectCatalogService;
+    this.userReadProjectionService = userReadProjectionService;
   }
 
   async execute(eventId, data, userContext) {
@@ -15,6 +16,7 @@ export class UpdateEventUseCase {
       throw new Error('Event not found');
     }
 
+    const originalDay = existingEvent.timeRange.day;
     await this.accessibleProjectCatalogService.ensureEventProjectAccessible(userContext, existingEvent.project);
 
     if (data.start && data.end && data.day) {
@@ -52,6 +54,10 @@ export class UpdateEventUseCase {
     this.eventValidationService.validateEvent(existingEvent, eventsOnDay);
 
     const updatedEvent = await this.eventRepository.update(eventId, existingEvent, userId);
+
+    if (this.userReadProjectionService) {
+      await this.userReadProjectionService.recomputeDaysForUser(userId, [originalDay, existingEvent.timeRange.day]);
+    }
 
     return updatedEvent.toJSON();
   }

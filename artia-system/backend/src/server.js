@@ -11,6 +11,7 @@ import { authMiddleware } from './presentation/http/middlewares/authMiddleware.j
 import { EventRepository } from './infrastructure/database/supabase/EventRepository.js';
 import { IntegrationSnapshotRepository } from './infrastructure/database/supabase/IntegrationSnapshotRepository.js';
 import { ProjectRepository } from './infrastructure/database/supabase/ProjectRepository.js';
+import { UserProjectionRepository } from './infrastructure/database/supabase/UserProjectionRepository.js';
 import { UserRepository } from './infrastructure/database/supabase/UserRepository.js';
 
 // Services
@@ -50,7 +51,11 @@ import { RegisterWithFactorialUseCase } from './application/use-cases/auth/Regis
 import { LoginUseCase } from './application/use-cases/auth/LoginUseCase.js';
 import { GetWorkedHoursComparisonUseCase } from './application/use-cases/hours/GetWorkedHoursComparisonUseCase.js';
 import { AccessibleProjectCatalogService } from './application/services/AccessibleProjectCatalogService.js';
+import { CachedProjectAccessService } from './application/services/CachedProjectAccessService.js';
 import { IntegrationReadModelService } from './application/services/IntegrationReadModelService.js';
+import { UserReadProjectionService } from './application/services/UserReadProjectionService.js';
+import { GetRangeSummaryViewUseCase } from './application/use-cases/views/GetRangeSummaryViewUseCase.js';
+import { GetWeekViewUseCase } from './application/use-cases/views/GetWeekViewUseCase.js';
 
 // Controllers
 import { EventController } from './presentation/http/controllers/EventController.js';
@@ -60,6 +65,7 @@ import { AuthController } from './presentation/http/controllers/AuthController.j
 import { ArtiaAuthController } from './presentation/http/controllers/ArtiaAuthController.js';
 import { ArtiaDBAuthController } from './presentation/http/controllers/ArtiaDBAuthController.js';
 import { FactorialAuthController } from './presentation/http/controllers/FactorialAuthController.js';
+import { ViewController } from './presentation/http/controllers/ViewController.js';
 import { WorkedHoursController } from './presentation/http/controllers/WorkedHoursController.js';
 
 // Routes
@@ -70,6 +76,7 @@ import { createAuthRoutes } from './presentation/http/routes/authRoutes.js';
 import { createArtiaAuthRoutes } from './presentation/http/routes/artiaAuthRoutes.js';
 import { createArtiaDBAuthRoutes } from './presentation/http/routes/artiaDBAuthRoutes.js';
 import { createFactorialAuthRoutes } from './presentation/http/routes/factorialAuthRoutes.js';
+import { createViewRoutes } from './presentation/http/routes/viewRoutes.js';
 import { createWorkedHoursRoutes } from './presentation/http/routes/workedHoursRoutes.js';
 
 const app = express();
@@ -127,6 +134,7 @@ app.use(rateLimitMiddleware);
 const eventRepository = new EventRepository();
 const integrationSnapshotRepository = new IntegrationSnapshotRepository();
 const projectRepository = new ProjectRepository();
+const userProjectionRepository = new UserProjectionRepository();
 const userRepository = new UserRepository();
 
 const eventValidationService = new EventValidationService();
@@ -152,32 +160,51 @@ const integrationReadModelService = new IntegrationReadModelService({
   artiaHoursReadService,
   inMemoryCache
 });
+const cachedProjectAccessService = new CachedProjectAccessService({
+  projectionRepository: userProjectionRepository,
+  snapshotRepository: integrationSnapshotRepository,
+  artiaProjectAccessService
+});
 const accessibleProjectCatalogService = new AccessibleProjectCatalogService(
   integrationReadModelService,
-  artiaProjectAccessService
+  cachedProjectAccessService
 );
+const userReadProjectionService = new UserReadProjectionService({
+  userRepository,
+  eventRepository,
+  projectionRepository: userProjectionRepository,
+  snapshotRepository: integrationSnapshotRepository,
+  integrationReadModelService,
+  accessibleProjectCatalogService,
+  cachedProjectAccessService,
+  artiaHoursReadService
+});
 
 const createEventUseCase = new CreateEventUseCase(
   eventRepository,
   eventValidationService,
-  accessibleProjectCatalogService
+  accessibleProjectCatalogService,
+  userReadProjectionService
 );
 const updateEventUseCase = new UpdateEventUseCase(
   eventRepository,
   eventValidationService,
-  accessibleProjectCatalogService
+  accessibleProjectCatalogService,
+  userReadProjectionService
 );
-const deleteEventUseCase = new DeleteEventUseCase(eventRepository);
+const deleteEventUseCase = new DeleteEventUseCase(eventRepository, userReadProjectionService);
 const listEventsUseCase = new ListEventsUseCase(eventRepository);
 const moveEventUseCase = new MoveEventUseCase(
   eventRepository,
   eventValidationService,
-  accessibleProjectCatalogService
+  accessibleProjectCatalogService,
+  userReadProjectionService
 );
 const importLegacyEventsUseCase = new ImportLegacyEventsUseCase(
   eventRepository,
   legacyEventsXLSXParser,
-  projectRepository
+  projectRepository,
+  userReadProjectionService
 );
 
 const importProjectsUseCase = new ImportProjectsUseCase(projectRepository, xlsxParser);
@@ -205,6 +232,8 @@ const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
   integrationReadModelService,
   accessibleProjectCatalogService
 );
+const getWeekViewUseCase = new GetWeekViewUseCase(userReadProjectionService);
+const getRangeSummaryViewUseCase = new GetRangeSummaryViewUseCase(userReadProjectionService);
 
 const eventController = new EventController(
   createEventUseCase,
@@ -237,6 +266,7 @@ const artiaDBAuthController = new ArtiaDBAuthController(loginWithArtiaDBUseCase,
 
 const factorialAuthController = new FactorialAuthController(registerWithFactorialUseCase, loginUseCase);
 const workedHoursController = new WorkedHoursController(getWorkedHoursComparisonUseCase);
+const viewController = new ViewController(getWeekViewUseCase, getRangeSummaryViewUseCase);
 
 // Routes
 app.get('/health', (req, res) => {
@@ -248,6 +278,7 @@ app.use('/api/v1/artia-auth', createArtiaAuthRoutes(artiaAuthController));
 app.use('/api/v1/artia-db', createArtiaDBAuthRoutes(artiaDBAuthController));
 app.use('/api/v1/factorial-auth', createFactorialAuthRoutes(factorialAuthController));
 app.use('/api/v1/worked-hours', createWorkedHoursRoutes(workedHoursController, authMiddleware));
+app.use('/api/v1/views', createViewRoutes(viewController, authMiddleware));
 app.use('/api/v1/events', createEventRoutes(eventController));
 app.use('/api/v1/projects', createProjectRoutes(projectController));
 app.use('/api/v1/exports', createExportRoutes(exportController));

@@ -2,10 +2,11 @@ import { Event } from '../../../domain/entities/Event.js';
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class ImportLegacyEventsUseCase {
-  constructor(eventRepository, legacyEventsXLSXParser, projectRepository) {
+  constructor(eventRepository, legacyEventsXLSXParser, projectRepository, userReadProjectionService = null) {
     this.eventRepository = eventRepository;
     this.legacyEventsXLSXParser = legacyEventsXLSXParser;
     this.projectRepository = projectRepository;
+    this.userReadProjectionService = userReadProjectionService;
   }
 
   async execute({ buffer, userId, mode = 'merge' }) {
@@ -19,12 +20,11 @@ export class ImportLegacyEventsUseCase {
 
     let replacedCount = 0;
     let skippedDuplicates = 0;
-    let existingEvents = [];
+    const allExistingEvents = await this.eventRepository.findAll({ userId });
+    let existingEvents = normalizedMode === 'replace' ? [] : allExistingEvents;
 
     if (normalizedMode === 'replace') {
       replacedCount = await this.eventRepository.deleteAllByUser(userId);
-    } else {
-      existingEvents = await this.eventRepository.findAll({ userId });
     }
 
     const existingSignatures = new Set(existingEvents.map(event => this.buildSignature(event.toJSON())));
@@ -45,6 +45,14 @@ export class ImportLegacyEventsUseCase {
     }
 
     const persistedEvents = await this.eventRepository.bulkCreate(eventsToPersist);
+    const affectedDays = Array.from(new Set([
+      ...allExistingEvents.map((event) => event.timeRange.day),
+      ...persistedEvents.map((event) => event.timeRange.day)
+    ]));
+
+    if (this.userReadProjectionService && affectedDays.length > 0) {
+      await this.userReadProjectionService.recomputeDaysForUser(userId, affectedDays);
+    }
 
     return {
       mode: normalizedMode,

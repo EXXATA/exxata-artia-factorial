@@ -150,30 +150,47 @@ export class IntegrationReadModelService {
 
   async getFactorialDailyHours(user, range, { forceRefresh = false } = {}) {
     const scopeKey = this.snapshotRepository.buildScopeKey('factorial_daily_hours', user.id, range.startDate, range.endDate);
-    const syncState = await this.snapshotRepository.getSyncState('factorial_daily_hours', scopeKey);
     const cachedRows = await this.snapshotRepository.getFactorialDailyHours(user.id, range.startDate, range.endDate);
     const shouldForceRefresh = this.isForceRefresh(forceRefresh);
+    const staleDays = shouldForceRefresh
+      ? this.snapshotRepository.listStaleDays(range.startDate, range.endDate, [], this.factorialHoursTtlHours)
+      : this.snapshotRepository.listStaleDays(range.startDate, range.endDate, cachedRows, this.factorialHoursTtlHours);
 
-    if (!shouldForceRefresh && this.snapshotRepository.isFresh(syncState)) {
+    if (staleDays.length === 0) {
       return this.snapshotRepository.normalizeFactorialRows(cachedRows);
     }
 
-    const memoryCacheKey = `factorial-shifts:${user.factorialEmployeeId}:${range.startDate}:${range.endDate}`;
+    const refreshRange = {
+      startDate: staleDays[0],
+      endDate: staleDays[staleDays.length - 1]
+    };
+    const memoryCacheKey = `factorial-shifts:${user.factorialEmployeeId}:${refreshRange.startDate}:${refreshRange.endDate}`;
     if (shouldForceRefresh) {
       this.inMemoryCache.delete(memoryCacheKey);
     }
 
     const shifts = await this.inMemoryCache.remember(
       memoryCacheKey,
-      () => this.factorialService.getShiftsByDateRange(user.factorialEmployeeId, new Date(`${range.startDate}T00:00:00`), new Date(`${range.endDate}T00:00:00`)),
+      () => this.factorialService.getShiftsByDateRange(
+        user.factorialEmployeeId,
+        new Date(`${refreshRange.startDate}T00:00:00`),
+        new Date(`${refreshRange.endDate}T00:00:00`)
+      ),
       60 * 1000
     );
 
-    const filteredShifts = (shifts || []).filter((shift) => this.isDayWithinRange(shift.day, range));
-    const hoursByDay = this.filterHoursByRange(this.aggregateFactorialShifts(filteredShifts), range);
+    const filteredShifts = (shifts || []).filter((shift) => this.isDayWithinRange(shift.day, refreshRange));
+    const hoursByDay = this.filterHoursByRange(this.aggregateFactorialShifts(filteredShifts), refreshRange);
     const syncedAt = new Date().toISOString();
 
-    await this.snapshotRepository.replaceFactorialDailyHours(user.id, user.factorialEmployeeId, range.startDate, range.endDate, hoursByDay, syncedAt);
+    await this.snapshotRepository.replaceFactorialDailyHours(
+      user.id,
+      user.factorialEmployeeId,
+      refreshRange.startDate,
+      refreshRange.endDate,
+      hoursByDay,
+      syncedAt
+    );
     await this.snapshotRepository.upsertSyncState({
       resourceType: 'factorial_daily_hours',
       scopeKey,
@@ -182,46 +199,53 @@ export class IntegrationReadModelService {
       lastSyncedAt: syncedAt,
       expiresAt: this.snapshotRepository.buildExpiry(syncedAt, this.factorialHoursTtlHours),
       metadata: {
-        startDate: range.startDate,
-        endDate: range.endDate,
-        days: Object.keys(hoursByDay).length
+        startDate: refreshRange.startDate,
+        endDate: refreshRange.endDate,
+        days: staleDays.length
       }
     });
 
-    return hoursByDay;
+    const freshRows = await this.snapshotRepository.getFactorialDailyHours(user.id, range.startDate, range.endDate);
+    return this.snapshotRepository.normalizeFactorialRows(freshRows);
   }
 
   async getArtiaSnapshots(user, range, { forceRefresh = false } = {}) {
     const scopeKey = this.snapshotRepository.buildScopeKey('artia_time_entries', user.id, range.startDate, range.endDate);
-    const syncState = await this.snapshotRepository.getSyncState('artia_time_entries', scopeKey);
-    const cachedEntriesRows = await this.snapshotRepository.getArtiaTimeEntries(user.id, range.startDate, range.endDate);
     const shouldForceRefresh = this.isForceRefresh(forceRefresh);
+    const dailyRows = await this.snapshotRepository.getArtiaDailyHours(user.id, range.startDate, range.endDate);
+    const cachedEntriesRows = await this.snapshotRepository.getArtiaTimeEntries(user.id, range.startDate, range.endDate);
+    const staleDays = shouldForceRefresh
+      ? this.snapshotRepository.listStaleDays(range.startDate, range.endDate, [], this.artiaHoursTtlHours)
+      : this.snapshotRepository.listStaleDays(range.startDate, range.endDate, dailyRows, this.artiaHoursTtlHours);
 
-    if (!shouldForceRefresh && this.snapshotRepository.isFresh(syncState)) {
-      const cachedEntries = this.snapshotRepository.normalizeArtiaEntryRows(cachedEntriesRows);
-      const dailyRows = await this.snapshotRepository.getArtiaDailyHours(user.id, range.startDate, range.endDate);
+    if (staleDays.length === 0) {
       return {
-        entries: cachedEntries,
+        entries: this.snapshotRepository.normalizeArtiaEntryRows(cachedEntriesRows),
         dailyHoursByDay: this.snapshotRepository.normalizeArtiaDailyRows(dailyRows),
-        source: syncState?.metadata?.sourceTable ? { tableName: syncState.metadata.sourceTable } : null,
-        reason: syncState?.metadata?.reason || null
+        source: dailyRows[0]?.source_table ? { tableName: dailyRows[0].source_table } : null,
+        reason: null
       };
     }
+
+    const refreshRange = {
+      startDate: staleDays[0],
+      endDate: staleDays[staleDays.length - 1]
+    };
 
     const result = await this.artiaHoursReadService.getWorkedTimeEntriesForUser({
       email: user.email,
       artiaUserId: user.artiaUserId,
-      startDate: range.startDate,
-      endDate: range.endDate
+      startDate: refreshRange.startDate,
+      endDate: refreshRange.endDate
     });
-    const filteredEntries = this.filterEntriesByRange(result.entries, range);
+    const filteredEntries = this.filterEntriesByRange(result.entries, refreshRange);
 
     const syncedAt = new Date().toISOString();
     await this.snapshotRepository.replaceArtiaTimeEntries(
       user.id,
       user.artiaUserId,
-      range.startDate,
-      range.endDate,
+      refreshRange.startDate,
+      refreshRange.endDate,
       filteredEntries,
       result.source?.tableName || null,
       syncedAt
@@ -231,8 +255,8 @@ export class IntegrationReadModelService {
     await this.snapshotRepository.replaceArtiaDailyHours(
       user.id,
       user.artiaUserId,
-      range.startDate,
-      range.endDate,
+      refreshRange.startDate,
+      refreshRange.endDate,
       dailyPayload,
       result.source?.tableName || null,
       syncedAt
@@ -250,15 +274,18 @@ export class IntegrationReadModelService {
         sourceTable: result.source?.tableName || null,
         entryCount: filteredEntries.length,
         reason: result.reason,
-        startDate: range.startDate,
-        endDate: range.endDate
+        startDate: refreshRange.startDate,
+        endDate: refreshRange.endDate
       }
     });
 
+    const freshDailyRows = await this.snapshotRepository.getArtiaDailyHours(user.id, range.startDate, range.endDate);
+    const freshEntryRows = await this.snapshotRepository.getArtiaTimeEntries(user.id, range.startDate, range.endDate);
+
     return {
-      entries: filteredEntries,
-      dailyHoursByDay: dailyPayload,
-      source: result.source,
+      entries: this.snapshotRepository.normalizeArtiaEntryRows(freshEntryRows),
+      dailyHoursByDay: this.snapshotRepository.normalizeArtiaDailyRows(freshDailyRows),
+      source: result.source || (freshDailyRows[0]?.source_table ? { tableName: freshDailyRows[0].source_table } : null),
       reason: result.reason
     };
   }

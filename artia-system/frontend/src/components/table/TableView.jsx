@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import EventModal from '../calendar/EventModal';
 import ArtiaRemoteEntriesModal from '../calendar/ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
-import { useEvents } from '../../hooks/useEvents';
-import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
-import { useProjects } from '../../hooks/useProjects';
-import { formatDateBR, formatDateISO, startOfWeekMonday, addDays } from '../../utils/dateUtils';
-import { extractTimeValue, formatWorkedTime, getEventMinutesByDay } from '../../utils/eventViewUtils';
-import { getArtiaSyncPresentation } from '../../utils/artiaSyncUtils';
+import TableDetailTable from './TableDetailTable';
+import TableSummaryTable from './TableSummaryTable';
+import { useWeekViewData } from '../../hooks/useWeekViewData';
+import { useRangeSummaryView } from '../../hooks/useRangeSummaryView';
+import { formatDateISO, startOfWeekMonday, addDays } from '../../utils/dateUtils';
+import { getEventMinutesByDay } from '../../utils/eventViewUtils';
 import { calculateDuration } from '../../utils/timeUtils';
+import { formatProjectOptionLabel, normalizeAvailableActivityOptions, normalizeAvailableProjectOptions } from '../../utils/viewFilterOptions';
+import { buildRemoteOnlyRows, getInclusiveDaySpan, sortRowsByDayAndStart } from './tableViewUtils';
 
 export default function TableView() {
   const initialWeekStart = startOfWeekMonday(new Date());
@@ -20,135 +22,84 @@ export default function TableView() {
   const [draftEvent, setDraftEvent] = useState(null);
   const [selectedRemoteEntries, setSelectedRemoteEntries] = useState([]);
 
-  const { data: eventsData, isLoading } = useEvents({
-    startDate,
-    endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined
-  });
-  const { data: comparisonData } = useWorkedHoursComparison({
+  const daySpan = useMemo(() => getInclusiveDaySpan(startDate, endDate), [endDate, startDate]);
+  const isDetailedMode = daySpan > 0 && daySpan <= 7;
+
+  const detailQuery = useWeekViewData({
     startDate,
     endDate,
     project: projectFilter !== 'ALL' ? projectFilter : undefined,
     activity: activityFilter !== 'ALL' ? activityFilter : undefined,
-    enabled: Boolean(startDate && endDate)
+    enabled: isDetailedMode
   });
-  const { data: projectsData } = useProjects();
+  const detailFilterSourceQuery = useWeekViewData({
+    startDate,
+    endDate,
+    enabled: isDetailedMode
+  });
+  const summaryQuery = useRangeSummaryView({
+    startDate,
+    endDate,
+    project: projectFilter !== 'ALL' ? projectFilter : undefined,
+    activity: activityFilter !== 'ALL' ? activityFilter : undefined,
+    enabled: !isDetailedMode
+  });
+  const summaryFilterSourceQuery = useRangeSummaryView({
+    startDate,
+    endDate,
+    enabled: !isDetailedMode
+  });
 
-  const events = eventsData?.data || [];
-  const projects = projectsData?.data || [];
-
-  const availableActivities = useMemo(() => {
-    if (projectFilter !== 'ALL') {
-      const project = projects.find((item) => String(item.number) === String(projectFilter));
-      return project?.activities || [];
-    }
-
-    return projects.flatMap((project) => project.activities || []);
-  }, [projectFilter, projects]);
-
-  useEffect(() => {
-    if (projectFilter === 'ALL') {
-      return;
-    }
-
-    const hasSelectedProject = projects.some((project) => String(project.number) === String(projectFilter));
-    if (!hasSelectedProject) {
-      setProjectFilter('ALL');
-      setActivityFilter('ALL');
-    }
-  }, [projectFilter, projects]);
-
-  useEffect(() => {
-    if (activityFilter === 'ALL') {
-      return;
-    }
-
-    const hasSelectedActivity = availableActivities.some((activity) => String(activity.label) === String(activityFilter));
-    if (!hasSelectedActivity) {
-      setActivityFilter('ALL');
-    }
-  }, [activityFilter, availableActivities]);
-
-  const filteredEvents = useMemo(() => {
-    const normalizedActivityFilter = activityFilter.trim().toLowerCase();
-
-    return [...events]
-      .filter((event) => {
-        if (activityFilter === 'ALL') return true;
-        return event.activityLabel?.trim().toLowerCase() === normalizedActivityFilter;
-      })
-      .sort((a, b) => {
-        const byDay = a.day.localeCompare(b.day);
-        if (byDay !== 0) return byDay;
-        return new Date(a.start) - new Date(b.start);
-      });
-  }, [activityFilter, events]);
-
-  const dailyDetailsByDate = useMemo(
-    () => Object.fromEntries((comparisonData?.dailyDetails || []).map((detail) => [detail.date, detail])),
-    [comparisonData]
+  const activeQuery = isDetailedMode ? detailQuery : summaryQuery;
+  const activeData = activeQuery.data || null;
+  const filterSourceData = (isDetailedMode ? detailFilterSourceQuery.data : summaryFilterSourceQuery.data) || activeData;
+  const projectOptions = useMemo(
+    () => normalizeAvailableProjectOptions(filterSourceData?.availableProjects || []),
+    [filterSourceData]
   );
-
-  const remoteOnlyRows = useMemo(() => {
-    return (comparisonData?.dailyDetails || [])
-      .flatMap((detail) => (detail.remoteOnlyArtiaEntries || []).map((entry) => ({
-        rowType: 'artia_only',
-        day: detail.date,
-        id: entry.id,
-        project: entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia',
-        start: entry.start,
-        end: entry.end,
-        effortMinutes: Math.round((Number(entry.hours) || 0) * 60),
-        activityLabel: entry.activityLabel || entry.activity || 'Atividade Artia',
-        notes: entry.notes || '',
-        activityId: entry.activityId || '—',
-        sourceStatus: entry.status || 'Somente Artia',
-        artiaRemoteEntryId: entry.id,
-        artiaRemoteHours: entry.hours || 0,
-        endEstimated: Boolean(entry.endEstimated),
-        sourceTable: entry.sourceTable || null,
-        projectDisplayLabel: entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'
-      })))
-      .sort((a, b) => {
-        const byDay = a.day.localeCompare(b.day);
-        if (byDay !== 0) return byDay;
-        return new Date(a.start) - new Date(b.start);
-      });
-  }, [comparisonData]);
-
-  const minutesByDay = useMemo(() => getEventMinutesByDay(filteredEvents), [filteredEvents]);
-  const tableRows = useMemo(() => {
-    const systemRows = filteredEvents.map((event) => ({
+  const activityOptions = useMemo(
+    () => normalizeAvailableActivityOptions(filterSourceData?.availableActivities || [], projectOptions, projectFilter),
+    [filterSourceData, projectFilter, projectOptions]
+  );
+  const dailyDetails = activeData?.dailyDetails || [];
+  const dailyDetailsByDate = useMemo(
+    () => Object.fromEntries(dailyDetails.map((detail) => [detail.date, detail])),
+    [dailyDetails]
+  );
+  const events = useMemo(
+    () => [...(isDetailedMode ? activeData?.events || [] : [])].sort(sortRowsByDayAndStart),
+    [activeData, isDetailedMode]
+  );
+  const detailRows = useMemo(() => {
+    const systemRows = events.map((event) => ({
       rowType: 'system',
       ...event,
       effortMinutes: calculateDuration(event.start, event.end)
     }));
 
-    return [...systemRows, ...remoteOnlyRows].sort((a, b) => {
-      const byDay = a.day.localeCompare(b.day);
-      if (byDay !== 0) return byDay;
-      return new Date(a.start) - new Date(b.start);
-    });
-  }, [filteredEvents, remoteOnlyRows]);
+    return [...systemRows, ...buildRemoteOnlyRows(dailyDetails)].sort(sortRowsByDayAndStart);
+  }, [dailyDetails, events]);
+  const minutesByDay = useMemo(() => getEventMinutesByDay(events), [events]);
 
-  const handleNewEvent = () => {
-    const todayIso = formatDateISO(new Date());
-    const day = todayIso >= startDate && todayIso <= endDate ? todayIso : startDate;
+  useEffect(() => {
+    if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
+      setProjectFilter('ALL');
+      setActivityFilter('ALL');
+    }
+  }, [projectFilter, projectOptions]);
 
+  useEffect(() => {
+    if (activityFilter !== 'ALL' && !activityOptions.some((activity) => activity.value === activityFilter)) {
+      setActivityFilter('ALL');
+    }
+  }, [activityFilter, activityOptions]);
+
+  useEffect(() => {
     setSelectedEvent(null);
-    setDraftEvent({ day, startTime: '08:00', endTime: '08:50' });
-  };
-
-  const closeModal = () => {
-    setSelectedEvent(null);
-    setDraftEvent(null);
-  };
-
-  const closeRemoteModal = () => {
     setSelectedRemoteEntries([]);
-  };
+  }, [isDetailedMode]);
 
-  if (isLoading) {
+  if (activeQuery.isLoading && !activeData) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="ui-empty-state max-w-md px-6 py-5">
@@ -164,151 +115,95 @@ export default function TableView() {
         <div className="ui-toolbar-row">
           <div className="ui-toolbar-group">
             <label className="ui-label">De</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="ui-input" />
-            <label className="ui-label">Até</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="ui-input" />
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
+            <label className="ui-label">Ate</label>
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
             <label className="ui-label">Projeto</label>
-            <select value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setActivityFilter('ALL'); }} className="ui-input min-w-[220px]">
+            <select value={projectFilter} onChange={(event) => { setProjectFilter(event.target.value); setActivityFilter('ALL'); }} className="ui-input min-w-[220px]">
               <option value="ALL">Todos os projetos</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.number}>{project.number} - {project.name}{project.active ? '' : ' · Inativo'}</option>
+              {projectOptions.map((project) => (
+                <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
               ))}
             </select>
             <label className="ui-label">Atividade</label>
-            <select value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)} className="ui-input min-w-[220px]">
+            <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="ui-input min-w-[220px]">
               <option value="ALL">Todas as atividades</option>
-              {availableActivities.map((activity) => (
-                <option key={`${activity.projectId}-${activity.id}`} value={activity.label}>{activity.label}</option>
+              {activityOptions.map((activity) => (
+                <option key={activity.key} value={activity.value}>{activity.label}</option>
               ))}
             </select>
           </div>
 
-          <button onClick={handleNewEvent} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark">
+          <button onClick={() => {
+            const todayIso = formatDateISO(new Date());
+            const day = todayIso >= startDate && todayIso <= endDate ? todayIso : startDate;
+            setSelectedEvent(null);
+            setDraftEvent({ day, startTime: '08:00', endTime: '08:50' });
+          }} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark">
             + Novo apontamento
           </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <span className={`ui-chip ${isDetailedMode ? 'ui-chip-success' : 'ui-chip-accent'}`}>
+            {isDetailedMode ? 'Modo detalhado' : 'Modo agregado'}
+          </span>
+          <span>
+            {isDetailedMode
+              ? 'Intervalos de ate 7 dias usam a leitura detalhada com eventos e lancamentos remotos.'
+              : 'Periodos acima de 7 dias usam resumo diario para manter a resposta rapida.'}
+          </span>
         </div>
       </section>
 
       <WorkedHoursRangePanel
         startDate={startDate}
         endDate={endDate}
+        stats={activeData?.stats || null}
+        isLoading={activeQuery.isLoading && !activeData}
+        isFetching={activeQuery.isFetching}
+        onRefresh={activeQuery.refresh}
         project={projectFilter !== 'ALL' ? projectFilter : undefined}
         activity={activityFilter !== 'ALL' ? activityFilter : undefined}
-        title="Conciliação diária da tabela"
-        subtitle="Comparação diária aplicada ao mesmo intervalo filtrado da tabela"
+        title={isDetailedMode ? 'Conciliacao diaria da tabela' : 'Conciliacao diaria do periodo agregado'}
+        subtitle={isDetailedMode
+          ? 'Comparacao diaria aplicada ao mesmo intervalo filtrado da tabela detalhada'
+          : 'Comparacao diaria agregada para o mesmo periodo filtrado da tabela'}
       />
 
-      <section className="ui-table-shell">
-        <div className="ui-table-scroll">
-          <table className="min-w-full border-collapse text-sm text-slate-700 dark:text-slate-200">
-            <thead className="ui-table-head">
-              <tr>
-                <th className="px-4 py-3">Data</th>
-                <th className="px-4 py-3">Origem</th>
-                <th className="px-4 py-3">Projeto</th>
-                <th className="px-4 py-3">Hora Início</th>
-                <th className="px-4 py-3">Hora de Término</th>
-                <th className="px-4 py-3">Esforço</th>
-                <th className="px-4 py-3">Esforço Dia</th>
-                <th className="px-4 py-3">Factorial Dia</th>
-                <th className="px-4 py-3">Atividade</th>
-                <th className="px-4 py-3">Observação</th>
-                <th className="px-4 py-3">Status Artia</th>
-                <th className="px-4 py-3">Registro Artia</th>
-                <th className="px-4 py-3">ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableRows.length === 0 ? (
-                <tr>
-                  <td colSpan="13" className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
-                    Nenhum apontamento encontrado para os filtros selecionados.
-                  </td>
-                </tr>
-              ) : (
-                tableRows.map((event) => {
-                  const effort = event.effortMinutes;
-                  const syncPresentation = event.rowType === 'system'
-                    ? getArtiaSyncPresentation(event.artiaSyncStatus)
-                    : {
-                      label: 'Somente Artia',
-                      badgeClassName: 'border-violet-400/30 bg-violet-500/10 text-violet-100'
-                    };
-                  const dayComparison = dailyDetailsByDate[event.day] || null;
-                  const rowDayMinutes = event.rowType === 'system'
-                    ? (minutesByDay[event.day] || 0)
-                    : Math.round((dayComparison?.artiaHours || 0) * 60);
+      {isDetailedMode ? (
+        <TableDetailTable
+          dailyDetailsByDate={dailyDetailsByDate}
+          minutesByDay={minutesByDay}
+          rows={detailRows}
+          onSelectEvent={(event) => {
+            setDraftEvent(null);
+            setSelectedEvent(event);
+          }}
+          onSelectRemoteEntry={(event) => setSelectedRemoteEntries([event])}
+        />
+      ) : (
+        <TableSummaryTable dailyDetails={dailyDetails} />
+      )}
 
-                  return (
-                    <tr
-                      key={`${event.rowType}-${event.id}`}
-                      onClick={() => {
-                        if (event.rowType === 'artia_only') {
-                          setSelectedRemoteEntries([event]);
-                          return;
-                        }
+      <div className="text-sm text-slate-500 dark:text-slate-400">
+        {isDetailedMode
+          ? 'Clique em uma linha do sistema para editar ou em uma linha do Artia para consultar o lancamento remoto.'
+          : 'O detalhamento evento a evento fica disponivel apenas em intervalos de ate 7 dias.'}
+      </div>
 
-                        if (event.rowType !== 'system') {
-                          return;
-                        }
-
-                        setDraftEvent(null);
-                        setSelectedEvent(event);
-                      }}
-                      className={`ui-table-row ${event.rowType === 'system' || event.rowType === 'artia_only' ? 'cursor-pointer' : ''} ${event.rowType === 'artia_only' ? 'bg-violet-50 dark:bg-violet-500/5' : ''}`}
-                    >
-                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{formatDateBR(event.day)}</td>
-                      <td className="px-4 py-3 text-xs">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 ${event.rowType === 'system' ? 'border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200' : 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-500/10 dark:text-violet-100'}`}>
-                          {event.rowType === 'system' ? 'Sistema' : 'Artia'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">{event.project}</td>
-                      <td className="px-4 py-3 ui-mono">{extractTimeValue(event.start)}</td>
-                      <td className="px-4 py-3 ui-mono">{extractTimeValue(event.end)}</td>
-                      <td className="px-4 py-3 ui-mono text-primary dark:text-primary-light">{formatWorkedTime(effort)}</td>
-                      <td className="px-4 py-3 ui-mono text-emerald-700 dark:text-emerald-200">{formatWorkedTime(rowDayMinutes)}</td>
-                      <td className="px-4 py-3 ui-mono text-slate-600 dark:text-slate-300">{formatWorkedTime(Math.round((dayComparison?.factorialHours || 0) * 60))}</td>
-                      <td className="px-4 py-3">{event.activityLabel}</td>
-                      <td className="max-w-[260px] truncate px-4 py-3 text-slate-500 dark:text-slate-400">{event.notes || '—'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${syncPresentation.badgeClassName}`}>
-                            {syncPresentation.label}
-                          </span>
-                          {event.endEstimated ? (
-                            <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-100">
-                              Horario estimado
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                        {event.artiaRemoteEntryId ? (
-                          <div className="space-y-1">
-                            <div className="ui-mono text-emerald-700 dark:text-emerald-100">{event.artiaRemoteEntryId}</div>
-                            {event.artiaRemoteHours > 0 && <div>{event.artiaRemoteHours.toFixed(2)}h</div>}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500">{event.rowType === 'system' ? (event.artiaSourceAvailable ? 'Não encontrado' : 'Leitura indisponível') : '—'}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{event.activityId || '—'}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <div className="text-sm text-slate-500 dark:text-slate-400">Dica: clique em uma linha do sistema para editar ou em uma linha do Artia para consultar o lancamento remoto.</div>
-
-      <EventModal isOpen={Boolean(selectedEvent || draftEvent)} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
+      <EventModal
+        isOpen={Boolean(selectedEvent || draftEvent)}
+        onClose={() => {
+          setSelectedEvent(null);
+          setDraftEvent(null);
+        }}
+        event={selectedEvent}
+        draft={draftEvent}
+      />
       <ArtiaRemoteEntriesModal
         isOpen={Boolean(selectedRemoteEntries.length)}
-        onClose={closeRemoteModal}
+        onClose={() => setSelectedRemoteEntries([])}
         entries={selectedRemoteEntries}
         title="Lancamento remoto do Artia"
         subtitle="Visualizacao somente leitura do lancamento remoto encontrado via MySQL."

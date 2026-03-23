@@ -10,8 +10,7 @@ export function useProjects() {
   return useQuery({
     queryKey: ['projects', userScopeKey],
     enabled: isAuthenticated && !isLoading,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: 5 * 60 * 1000,
     queryFn: projectService.getAll
   });
 }
@@ -24,8 +23,7 @@ export function useSearchProjects(query) {
     queryKey: ['projects', userScopeKey, 'search', query],
     queryFn: () => projectService.search(query),
     enabled: isAuthenticated && !isLoading && !!query,
-    staleTime: 0,
-    refetchOnMount: 'always'
+    staleTime: 5 * 60 * 1000
   });
 }
 
@@ -37,8 +35,7 @@ export function useProjectActivities(projectId) {
     queryKey: ['projects', userScopeKey, projectId, 'activities'],
     queryFn: () => projectService.getActivities(projectId),
     enabled: isAuthenticated && !isLoading && !!projectId,
-    staleTime: 0,
-    refetchOnMount: 'always'
+    staleTime: 5 * 60 * 1000
   });
 }
 

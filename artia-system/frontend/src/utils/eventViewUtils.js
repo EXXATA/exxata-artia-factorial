@@ -1,17 +1,17 @@
 import { addDays, formatDateBR, formatDateISO, startOfWeekMonday } from './dateUtils';
 import { calculateDuration } from './timeUtils';
 
-export const CALENDAR_START_HOUR = 6;
-export const CALENDAR_END_HOUR = 22;
+export const CALENDAR_START_HOUR = 0;
+export const CALENDAR_END_HOUR = 24;
 export const SLOT_MINUTES = 30;
 export const ROW_HEIGHT = 44;
-export const CALENDAR_SNAP_MINUTES = 10;
-export const CALENDAR_MIN_EVENT_MINUTES = 10;
+export const CALENDAR_SNAP_MINUTES = 1;
+export const CALENDAR_MIN_EVENT_MINUTES = 1;
 export const CALENDAR_DEFAULT_EVENT_DURATION = 50;
 export const CALENDAR_GRID_START_MINUTES = CALENDAR_START_HOUR * 60;
 export const CALENDAR_GRID_END_MINUTES = CALENDAR_END_HOUR * 60;
 
-export function buildTimeOptions(stepMinutes = 10) {
+export function buildTimeOptions(stepMinutes = 1) {
   const options = [];
 
   for (let minutes = 0; minutes < 24 * 60; minutes += stepMinutes) {
@@ -44,10 +44,56 @@ export function combineDayAndTime(day, time) {
   return date.toISOString();
 }
 
-export function extractTimeValue(isoDate) {
+export function extractTimeValue(isoDate, day = null) {
   if (!isoDate) return '';
   const date = new Date(isoDate);
+
+  if (day) {
+    const nextDay = addDays(new Date(`${day}T00:00:00`), 1);
+    const isNextDayMidnight = (
+      formatDateISO(date) === formatDateISO(nextDay)
+      && date.getHours() === 0
+      && date.getMinutes() === 0
+    );
+
+    if (isNextDayMidnight) {
+      return '24:00';
+    }
+  }
+
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+export function getEventMinuteRange(event) {
+  if (!event?.start || !event?.end) {
+    return {
+      duration: 0,
+      endMinutes: 0,
+      isValid: false,
+      startMinutes: 0
+    };
+  }
+
+  const startDate = new Date(event.start);
+  const duration = calculateDuration(event.start, event.end);
+
+  if (Number.isNaN(startDate.getTime()) || duration <= 0) {
+    return {
+      duration: 0,
+      endMinutes: 0,
+      isValid: false,
+      startMinutes: 0
+    };
+  }
+
+  const startMinutes = (startDate.getHours() * 60) + startDate.getMinutes();
+
+  return {
+    duration,
+    endMinutes: Math.min(24 * 60, startMinutes + duration),
+    isValid: true,
+    startMinutes
+  };
 }
 
 export function formatWorkedTime(minutes) {
@@ -72,13 +118,21 @@ export function getEventMinutesByDay(events) {
 }
 
 export function getEventPosition(event) {
-  const date = new Date(event.start);
-  const minutesFromGridStart = (date.getHours() * 60 + date.getMinutes()) - CALENDAR_START_HOUR * 60;
-  const duration = Math.max(calculateDuration(event.start, event.end), 10);
+  const { duration, isValid, startMinutes } = getEventMinuteRange(event);
+
+  if (!isValid) {
+    return {
+      top: 0,
+      height: 0
+    };
+  }
+
+  const minutesFromGridStart = startMinutes - CALENDAR_START_HOUR * 60;
+  const visibleDuration = Math.max(duration, CALENDAR_MIN_EVENT_MINUTES);
 
   return {
     top: (minutesFromGridStart / SLOT_MINUTES) * ROW_HEIGHT,
-    height: Math.max((duration / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
+    height: Math.max((visibleDuration / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
   };
 }
 
@@ -96,9 +150,8 @@ export function getClampedEventPosition(event, {
     };
   }
 
-  const startDate = new Date(event.start);
-  const duration = calculateDuration(event.start, event.end);
-  if (Number.isNaN(startDate.getTime()) || duration <= 0) {
+  const { duration, endMinutes, isValid, startMinutes } = getEventMinuteRange(event);
+  if (!isValid) {
     return {
       isVisible: false,
       isClampedStart: false,
@@ -108,8 +161,6 @@ export function getClampedEventPosition(event, {
     };
   }
 
-  const startMinutes = (startDate.getHours() * 60) + startDate.getMinutes();
-  const endMinutes = startMinutes + duration;
   const clampedStart = Math.max(gridStartMinutes, startMinutes);
   const clampedEnd = Math.min(gridEndMinutes, endMinutes);
   const isVisible = clampedEnd > clampedStart;

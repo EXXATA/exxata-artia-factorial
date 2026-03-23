@@ -64,59 +64,6 @@ export function getEventSyncBreakdownByDay(events) {
   }, {});
 }
 
-export function buildProjectWeeklySyncSummary(events, weekDays) {
-  const summary = new Map();
-
-  events.forEach((event) => {
-    const projectKey = String(event.project || 'Sem projeto');
-    const duration = calculateDuration(event.start, event.end);
-
-    if (!summary.has(projectKey)) {
-      summary.set(projectKey, {
-        project: projectKey,
-        totalMinutes: 0,
-        syncedMinutes: 0,
-        pendingMinutes: 0,
-        manualMinutes: 0,
-        byDay: Object.fromEntries(weekDays.map((day) => [day, {
-          totalMinutes: 0,
-          syncedMinutes: 0,
-          pendingMinutes: 0,
-          manualMinutes: 0
-        }]))
-      });
-    }
-
-    const projectSummary = summary.get(projectKey);
-    const daySummary = projectSummary.byDay[event.day] || {
-      totalMinutes: 0,
-      syncedMinutes: 0,
-      pendingMinutes: 0,
-      manualMinutes: 0
-    };
-
-    projectSummary.totalMinutes += duration;
-    daySummary.totalMinutes += duration;
-
-    if (event.artiaSyncStatus === 'synced') {
-      projectSummary.syncedMinutes += duration;
-      daySummary.syncedMinutes += duration;
-    } else {
-      projectSummary.pendingMinutes += duration;
-      daySummary.pendingMinutes += duration;
-
-      if (event.artiaSyncStatus === 'manual') {
-        projectSummary.manualMinutes += duration;
-        daySummary.manualMinutes += duration;
-      }
-    }
-
-    projectSummary.byDay[event.day] = daySummary;
-  });
-
-  return Array.from(summary.values()).sort((left, right) => right.totalMinutes - left.totalMinutes);
-}
-
 export function buildProjectWeeklyComparisonRows(projectSummaries = [], weekDays = []) {
   return (projectSummaries || [])
     .map((summary) => {

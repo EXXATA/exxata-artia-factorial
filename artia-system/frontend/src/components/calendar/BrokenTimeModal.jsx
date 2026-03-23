@@ -105,12 +105,14 @@ export default function BrokenTimeModal({ isOpen, onClose, day, project, activit
               <div className="flex-1 grid grid-cols-2 gap-2">
                 <Input
                   type="time"
+                  step="60"
                   value={interval.start}
                   onChange={(e) => updateInterval(index, 'start', e.target.value)}
                   placeholder="Início"
                 />
                 <Input
                   type="time"
+                  step="60"
                   value={interval.end}
                   onChange={(e) => updateInterval(index, 'end', e.target.value)}
                   placeholder="Fim"

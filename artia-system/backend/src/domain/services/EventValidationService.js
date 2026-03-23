@@ -14,7 +14,7 @@ export class EventValidationService {
     return true;
   }
 
-  validateDuration(event, minMinutes = 10, maxMinutes = 1440) {
+  validateDuration(event, minMinutes = 1, maxMinutes = 1440) {
     const duration = event.getDurationInMinutes();
 
     if (duration < minMinutes) {

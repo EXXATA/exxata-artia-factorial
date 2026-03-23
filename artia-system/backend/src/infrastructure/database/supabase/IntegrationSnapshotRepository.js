@@ -6,6 +6,19 @@ function addDays(dateString, days) {
   return date.toISOString().split('T')[0];
 }
 
+function isFreshTimestamp(value, ttlHours) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) {
+    return false;
+  }
+
+  return (timestamp + (ttlHours * 60 * 60 * 1000)) > Date.now();
+}
+
 const PAGE_SIZE = 1000;
 const INSERT_CHUNK_SIZE = 500;
 const PROJECT_ID_FILTER_CHUNK_SIZE = 200;
@@ -387,7 +400,35 @@ export class IntegrationSnapshotRepository {
       throw deleteError;
     }
 
-    return this.upsertFactorialDailyHours(userId, employeeId, hoursByDay, syncedAt);
+    const rows = [];
+    let cursor = startDate;
+
+    while (cursor <= endDate) {
+      rows.push({
+        user_id: userId,
+        employee_id: employeeId,
+        day: cursor,
+        worked_hours: Number(Number(hoursByDay?.[cursor] || 0).toFixed(2)),
+        source_synced_at: syncedAt,
+        updated_at: syncedAt
+      });
+      cursor = addDays(cursor, 1);
+    }
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('factorial_daily_hours_cache')
+      .insert(rows)
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || [];
   }
 
   async getArtiaDailyHours(userId, startDate, endDate) {
@@ -418,7 +459,38 @@ export class IntegrationSnapshotRepository {
       throw deleteError;
     }
 
-    return this.upsertArtiaDailyHours(userId, artiaUserId, hoursByDay, sourceTable, syncedAt);
+    const rows = [];
+    let cursor = startDate;
+
+    while (cursor <= endDate) {
+      const value = hoursByDay?.[cursor] || {};
+      rows.push({
+        user_id: userId,
+        artia_user_id: artiaUserId,
+        day: cursor,
+        worked_hours: Number(Number(value.workedHours || 0).toFixed(2)),
+        entry_count: Number(value.entryCount || 0),
+        source_table: sourceTable,
+        source_synced_at: syncedAt,
+        updated_at: syncedAt
+      });
+      cursor = addDays(cursor, 1);
+    }
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('artia_daily_hours_cache')
+      .insert(rows)
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || [];
   }
 
   async upsertArtiaDailyHours(userId, artiaUserId, hoursByDay, sourceTable, syncedAt = new Date().toISOString()) {
@@ -578,5 +650,23 @@ export class IntegrationSnapshotRepository {
     }
 
     return missingDays;
+  }
+
+  listStaleDays(startDate, endDate, rows, ttlHours, timestampColumn = 'source_synced_at') {
+    const rowByDay = new Map((rows || []).map((row) => [row.day, row]));
+    const staleDays = [];
+    let cursor = startDate;
+
+    while (cursor <= endDate) {
+      const row = rowByDay.get(cursor);
+
+      if (!row || !isFreshTimestamp(row[timestampColumn], ttlHours)) {
+        staleDays.push(cursor);
+      }
+
+      cursor = addDays(cursor, 1);
+    }
+
+    return staleDays;
   }
 }

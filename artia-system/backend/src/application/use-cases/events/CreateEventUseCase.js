@@ -2,10 +2,11 @@ import { Event } from '../../../domain/entities/Event.js';
 import { TimeRange } from '../../../domain/value-objects/TimeRange.js';
 
 export class CreateEventUseCase {
-  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService) {
+  constructor(eventRepository, eventValidationService, accessibleProjectCatalogService, userReadProjectionService = null) {
     this.eventRepository = eventRepository;
     this.eventValidationService = eventValidationService;
     this.accessibleProjectCatalogService = accessibleProjectCatalogService;
+    this.userReadProjectionService = userReadProjectionService;
   }
 
   async execute(data, userContext = {}) {
@@ -35,6 +36,10 @@ export class CreateEventUseCase {
     this.eventValidationService.validateEvent(event, existingEvents);
 
     const createdEvent = await this.eventRepository.create(event);
+
+    if (this.userReadProjectionService) {
+      await this.userReadProjectionService.recomputeDaysForUser(userId, [day]);
+    }
 
     return createdEvent.toJSON();
   }

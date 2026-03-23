@@ -6,6 +6,6 @@ name = "artia-system"
 script = ""
 
 [[actions]]
-name = "Executar"
+name = "Abrir preview"
 icon = "run"
-command = "Start-Job -ScriptBlock { Set-Location 'C:\\Users\\LENOVO\\OneDrive - exxata.com.br\\Área de Trabalho\\exxata-artia-factorial\\artia-system\\backend'; npm run dev }; Set-Location 'C:\\Users\\LENOVO\\OneDrive - exxata.com.br\\Área de Trabalho\\exxata-artia-factorial\\artia-system\\frontend'; npm run dev -- --host 127.0.0.1"
+command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\open-preview.ps1"

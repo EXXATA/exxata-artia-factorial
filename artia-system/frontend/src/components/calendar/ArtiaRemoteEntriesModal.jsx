@@ -15,12 +15,12 @@ function buildIntervalLabel(entry) {
     return 'Horario indisponivel';
   }
 
-  const startLabel = extractTimeValue(entry.start);
+  const startLabel = extractTimeValue(entry.start, entry.day);
   if (!entry?.end) {
     return `${startLabel} - duracao ${formatWorkedTime(entry.minutes || 0)}`;
   }
 
-  return `${startLabel} - ${extractTimeValue(entry.end)}`;
+  return `${startLabel} - ${extractTimeValue(entry.end, entry.day)}`;
 }
 
 export default function ArtiaRemoteEntriesModal({
