@@ -1,81 +1,113 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authService } from '../services/api/authService';
-import { factorialAuthService } from '../services/api/factorialAuthService';
-import { clearAuthState, clearArtiaToken, getStoredToken, getStoredUser } from '../services/auth/authStorage';
+import { isApiUnavailableError } from '../services/api/apiError';
+import { clearAuthState, getStoredUser } from '../services/auth/authStorage';
+import { microsoftAuthService } from '../services/auth/microsoftAuthService';
 import { supabase } from '../services/supabase/supabaseClient';
 
 const AuthContext = createContext(null);
 
+async function getSessionAccessToken() {
+  const {
+    data: { session }
+  } = await supabase.auth.getSession();
+
+  return session?.access_token || null;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser());
-  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getStoredToken()));
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getStoredUser()));
   const [isLoading, setIsLoading] = useState(true);
+  const lastResolvedTokenRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
-    let syncTimeoutId = null;
+
+    const applyLocalState = (currentUser) => {
+      setUser(currentUser);
+      setIsAuthenticated(Boolean(currentUser));
+      setIsLoading(false);
+    };
 
     const clearSessionState = () => {
       clearAuthState();
+      authService.resetCurrentUserCache();
+      lastResolvedTokenRef.current = null;
       setUser(null);
       setIsAuthenticated(false);
       setIsLoading(false);
     };
 
-    const syncCurrentUser = () => {
-      if (syncTimeoutId) {
-        window.clearTimeout(syncTimeoutId);
+    const handleProfileResolutionError = async (error) => {
+      if (!isMounted) {
+        return null;
       }
 
-      syncTimeoutId = window.setTimeout(async () => {
-        try {
-          const currentUser = await authService.getCurrentUser();
+      if (isApiUnavailableError(error)) {
+        const storedUser = getStoredUser();
+        lastResolvedTokenRef.current = null;
+        setUser(storedUser);
+        setIsAuthenticated(Boolean(storedUser));
+        setIsLoading(false);
+        return null;
+      }
 
-          if (!isMounted) {
-            return;
-          }
+      await microsoftAuthService.logout();
+      clearSessionState();
+      return null;
+    };
 
-          setUser(currentUser);
-          setIsAuthenticated(Boolean(currentUser));
-        } catch (_error) {
-          if (!isMounted) {
-            return;
-          }
+    const syncCurrentUser = async ({ force = false } = {}) => {
+      const accessToken = await getSessionAccessToken();
+      const storedUser = getStoredUser();
 
-          await authService.logout();
-          clearSessionState();
-          return;
+      if (!accessToken) {
+        clearSessionState();
+        return null;
+      }
+
+      if (!force && storedUser && lastResolvedTokenRef.current === accessToken) {
+        applyLocalState(storedUser);
+        return storedUser;
+      }
+
+      try {
+        const currentUser = await authService.getCurrentUser({ force });
+
+        if (!isMounted) {
+          return null;
         }
 
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }, 0);
+        lastResolvedTokenRef.current = accessToken;
+        applyLocalState(currentUser);
+        return currentUser;
+      } catch (error) {
+        return handleProfileResolutionError(error);
+      }
     };
 
     const initializeAuth = async () => {
       try {
-        const restoredSession = await factorialAuthService.restoreSession();
+        const restoredSession = await microsoftAuthService.restoreSession();
 
         if (!isMounted) {
           return;
         }
 
-        if (restoredSession.success && restoredSession.data?.user) {
-          setUser(restoredSession.data.user);
-          setIsAuthenticated(true);
-        } else {
+        if (!restoredSession?.user) {
           clearSessionState();
           return;
         }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+
+        lastResolvedTokenRef.current = restoredSession.session?.accessToken || null;
+        applyLocalState(restoredSession.user);
+      } catch (error) {
+        await handleProfileResolutionError(error);
       }
     };
 
-    initializeAuth();
+    void initializeAuth();
 
     const {
       data: { subscription }
@@ -89,24 +121,23 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      setIsAuthenticated(true);
-
       const storedUser = getStoredUser();
       if (storedUser) {
         setUser(storedUser);
+        setIsAuthenticated(true);
       }
 
       setIsLoading(false);
-      syncCurrentUser();
+
+      if (storedUser && lastResolvedTokenRef.current === session.access_token) {
+        return;
+      }
+
+      void syncCurrentUser();
     });
 
     return () => {
       isMounted = false;
-
-      if (syncTimeoutId) {
-        window.clearTimeout(syncTimeoutId);
-      }
-
       subscription.unsubscribe();
     };
   }, []);
@@ -115,26 +146,51 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
 
     try {
-      const restoredSession = await factorialAuthService.restoreSession();
-      const currentUser = restoredSession.data?.user || null;
+      const restoredSession = await microsoftAuthService.restoreSession({ forceUserSync: true });
+      const currentUser = restoredSession?.user || null;
 
+      lastResolvedTokenRef.current = restoredSession?.session?.accessToken || null;
       setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser || getStoredToken()));
+      setIsAuthenticated(Boolean(currentUser));
+      return currentUser;
+    } catch (error) {
+      if (isApiUnavailableError(error)) {
+        setIsLoading(false);
+        return null;
+      }
+
+      await microsoftAuthService.logout();
+      clearAuthState();
+      authService.resetCurrentUserCache();
+      lastResolvedTokenRef.current = null;
+      setUser(null);
+      setIsAuthenticated(false);
+      return null;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (authData) => {
-    const currentUser = authData?.user || (await authService.getCurrentUser());
+  const login = async (authData = null) => {
+    if (authData?.user) {
+      const accessToken = await getSessionAccessToken();
+      lastResolvedTokenRef.current = accessToken;
+      setUser(authData.user);
+      setIsAuthenticated(Boolean(authData.user));
+      return authData.user;
+    }
+
+    const currentUser = await authService.getCurrentUser();
+    const accessToken = await getSessionAccessToken();
+    lastResolvedTokenRef.current = accessToken;
     setUser(currentUser);
-    setIsAuthenticated(Boolean(currentUser || getStoredToken()));
+    setIsAuthenticated(Boolean(currentUser));
     return currentUser;
   };
 
   const logout = async () => {
-    await factorialAuthService.logout();
-    clearArtiaToken();
+    await microsoftAuthService.logout();
+    lastResolvedTokenRef.current = null;
     setUser(null);
     setIsAuthenticated(false);
   };

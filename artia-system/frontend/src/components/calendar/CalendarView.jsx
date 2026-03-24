@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMoveEvent } from '../../hooks/useEvents';
 import { useProjects } from '../../hooks/useProjects';
+import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
 import EventModal from './EventModal';
 import ArtiaRemoteEntriesModal from './ArtiaRemoteEntriesModal';
@@ -41,6 +42,12 @@ export default function CalendarView() {
   } = useWeekViewData({ startDate, endDate, enabled: Boolean(startDate && endDate) });
   const { data: projectsData, isLoading: projectsLoading } = useProjects();
   const moveMutation = useMoveEvent();
+
+  useRegisterGlobalAction({
+    id: `calendar:${startDate}:${endDate}`,
+    label: 'Atualizar semana visível',
+    run: refresh
+  });
 
   const events = weekViewData?.events || [];
   const projects = projectsData?.data || [];

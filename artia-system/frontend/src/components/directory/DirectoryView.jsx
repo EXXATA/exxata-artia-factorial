@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
+import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 
 function getDefaultRange() {
   const now = new Date();
@@ -23,11 +24,23 @@ export default function DirectoryView() {
   const [endDate, setEndDate] = useState(defaultRange.endDate);
   const [selectedProject, setSelectedProject] = useState(null);
   
-  const { data: projectsData, isLoading } = useProjects();
-  const { data: comparisonData } = useWorkedHoursComparison({
+  const projectsQuery = useProjects();
+  const { data: projectsData, isLoading } = projectsQuery;
+  const comparisonQuery = useWorkedHoursComparison({
     startDate,
     endDate,
     enabled: Boolean(startDate && endDate)
+  });
+  const { data: comparisonData } = comparisonQuery;
+  useRegisterGlobalAction({
+    id: `directory:${startDate}:${endDate}`,
+    label: 'Atualizar diretório e catálogo',
+    run: async () => {
+      await Promise.all([
+        projectsQuery.refetch(),
+        comparisonQuery.refresh()
+      ]);
+    }
   });
   const projects = projectsData?.data || [];
   const projectSummaries = comparisonData?.projectSummaries || [];

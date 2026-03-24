@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useThemeStore } from './store/slices/uiSlice';
 import { AuthProvider } from './contexts/AuthContext';
+import { GlobalActionProvider } from './contexts/GlobalActionContext';
 import Header from './components/layout/Header';
 import CalendarView from './components/calendar/CalendarView';
 import GanttView from './components/gantt/GanttView';
@@ -9,6 +10,7 @@ import ChartsView from './components/charts/ChartsView';
 import DirectoryView from './components/directory/DirectoryView';
 import WorkedHoursComparison from './pages/WorkedHoursComparison';
 import LoginPage from './pages/LoginPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import PrivateRoute from './components/auth/PrivateRoute';
 
 function App() {
@@ -18,31 +20,34 @@ function App() {
     <div className={theme}>
       <div className="app-shell">
         <AuthProvider>
-          <Router>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/*"
-              element={
-                <PrivateRoute>
-                  <>
-                    <Header />
-                    <main className="app-main">
-                      <Routes>
-                        <Route path="/" element={<CalendarView />} />
-                        <Route path="/gantt" element={<GanttView />} />
-                        <Route path="/table" element={<TableView />} />
-                        <Route path="/charts" element={<ChartsView />} />
-                        <Route path="/directory" element={<DirectoryView />} />
-                        <Route path="/comparison" element={<WorkedHoursComparison />} />
-                      </Routes>
-                    </main>
-                  </>
-                </PrivateRoute>
-              }
-              />
-          </Routes>
-        </Router>
+          <GlobalActionProvider>
+            <Router>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                <Route
+                  path="/*"
+                  element={
+                    <PrivateRoute>
+                      <>
+                        <Header />
+                        <main className="app-main">
+                          <Routes>
+                            <Route path="/" element={<CalendarView />} />
+                            <Route path="/gantt" element={<GanttView />} />
+                            <Route path="/table" element={<TableView />} />
+                            <Route path="/charts" element={<ChartsView />} />
+                            <Route path="/directory" element={<DirectoryView />} />
+                            <Route path="/comparison" element={<WorkedHoursComparison />} />
+                          </Routes>
+                        </main>
+                      </>
+                    </PrivateRoute>
+                  }
+                />
+              </Routes>
+            </Router>
+          </GlobalActionProvider>
         </AuthProvider>
       </div>
     </div>

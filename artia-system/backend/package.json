@@ -7,13 +7,16 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "dev:local": "node src/server.js",
     "setup": "node scripts/setup.js",
     "generate-secrets": "node ../scripts/generate-secrets.js",
     "vercel-build": "echo 'Build complete'",
     "test": "jest",
     "test:auth-flow": "node --test tests/unit/RegisterWithFactorialUseCase.test.js",
+    "test:microsoft-auth": "node --test --test-isolation=none tests/unit/CorporateMicrosoftIdentityPolicy.test.js tests/unit/ResolveAuthenticatedUserUseCase.test.js",
     "test:andre-analysis": "node scripts/analyze-user-functional.js andre.baptista@exxata.com.br 30",
     "test:andre-http-flows": "node scripts/check-user-http-flows.js andre.baptista@exxata.com.br",
+    "reconcile:auth-users": "node scripts/reconcile-auth-users.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },

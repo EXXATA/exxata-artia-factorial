@@ -6,7 +6,7 @@ export class UserRepository {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
+      .ilike('email', String(email || '').trim())
       .single();
 
     if (error) {

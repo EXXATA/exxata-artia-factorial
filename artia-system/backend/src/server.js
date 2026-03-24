@@ -13,6 +13,7 @@ import { IntegrationSnapshotRepository } from './infrastructure/database/supabas
 import { ProjectRepository } from './infrastructure/database/supabase/ProjectRepository.js';
 import { UserProjectionRepository } from './infrastructure/database/supabase/UserProjectionRepository.js';
 import { UserRepository } from './infrastructure/database/supabase/UserRepository.js';
+import { assertServiceRoleConfigured } from './infrastructure/database/supabase/supabaseClient.js';
 
 // Services
 import { EventValidationService } from './domain/services/EventValidationService.js';
@@ -27,12 +28,10 @@ import { LegacyEventsXLSXParser } from './infrastructure/file-storage/LegacyEven
 import { InMemoryTtlCache } from './infrastructure/cache/InMemoryTtlCache.js';
 
 // External Services
-import { ArtiaAuthService } from './infrastructure/external/ArtiaAuthService.js';
 import { ArtiaDBService } from './infrastructure/external/ArtiaDBService.js';
 import { ArtiaHoursReadService } from './infrastructure/external/ArtiaHoursReadService.js';
 import { ArtiaProjectAccessService } from './infrastructure/external/ArtiaProjectAccessService.js';
 import { FactorialService } from './infrastructure/external/FactorialService.js';
-import { SupabaseAuthService } from './infrastructure/auth/SupabaseAuthService.js';
 
 // Use Cases
 import { CreateEventUseCase } from './application/use-cases/events/CreateEventUseCase.js';
@@ -45,10 +44,6 @@ import { ImportProjectsUseCase } from './application/use-cases/projects/ImportPr
 import { SearchProjectsUseCase } from './application/use-cases/projects/SearchProjectsUseCase.js';
 import { ExportToCSVUseCase } from './application/use-cases/exports/ExportToCSVUseCase.js';
 import { ExportToXLSXUseCase } from './application/use-cases/exports/ExportToXLSXUseCase.js';
-import { LoginWithArtiaUseCase } from './application/use-cases/auth/LoginWithArtiaUseCase.js';
-import { LoginWithArtiaDBUseCase } from './application/use-cases/auth/LoginWithArtiaDBUseCase.js';
-import { RegisterWithFactorialUseCase } from './application/use-cases/auth/RegisterWithFactorialUseCase.js';
-import { LoginUseCase } from './application/use-cases/auth/LoginUseCase.js';
 import { GetWorkedHoursComparisonUseCase } from './application/use-cases/hours/GetWorkedHoursComparisonUseCase.js';
 import { AccessibleProjectCatalogService } from './application/services/AccessibleProjectCatalogService.js';
 import { CachedProjectAccessService } from './application/services/CachedProjectAccessService.js';
@@ -62,9 +57,6 @@ import { EventController } from './presentation/http/controllers/EventController
 import { ProjectController } from './presentation/http/controllers/ProjectController.js';
 import { ExportController } from './presentation/http/controllers/ExportController.js';
 import { AuthController } from './presentation/http/controllers/AuthController.js';
-import { ArtiaAuthController } from './presentation/http/controllers/ArtiaAuthController.js';
-import { ArtiaDBAuthController } from './presentation/http/controllers/ArtiaDBAuthController.js';
-import { FactorialAuthController } from './presentation/http/controllers/FactorialAuthController.js';
 import { ViewController } from './presentation/http/controllers/ViewController.js';
 import { WorkedHoursController } from './presentation/http/controllers/WorkedHoursController.js';
 
@@ -73,9 +65,6 @@ import { createEventRoutes } from './presentation/http/routes/eventRoutes.js';
 import { createProjectRoutes } from './presentation/http/routes/projectRoutes.js';
 import { createExportRoutes } from './presentation/http/routes/exportRoutes.js';
 import { createAuthRoutes } from './presentation/http/routes/authRoutes.js';
-import { createArtiaAuthRoutes } from './presentation/http/routes/artiaAuthRoutes.js';
-import { createArtiaDBAuthRoutes } from './presentation/http/routes/artiaDBAuthRoutes.js';
-import { createFactorialAuthRoutes } from './presentation/http/routes/factorialAuthRoutes.js';
 import { createViewRoutes } from './presentation/http/routes/viewRoutes.js';
 import { createWorkedHoursRoutes } from './presentation/http/routes/workedHoursRoutes.js';
 
@@ -147,12 +136,10 @@ const xlsxParser = new XLSXParser();
 const legacyEventsXLSXParser = new LegacyEventsXLSXParser();
 const inMemoryCache = new InMemoryTtlCache();
 
-const artiaAuthService = new ArtiaAuthService();
 const artiaDBService = new ArtiaDBService();
 const artiaHoursReadService = new ArtiaHoursReadService();
 const artiaProjectAccessService = new ArtiaProjectAccessService(inMemoryCache);
 const factorialService = new FactorialService();
-const supabaseAuthService = new SupabaseAuthService();
 const integrationReadModelService = new IntegrationReadModelService({
   snapshotRepository: integrationSnapshotRepository,
   artiaDBService,
@@ -213,19 +200,6 @@ const searchProjectsUseCase = new SearchProjectsUseCase(projectRepository);
 const exportToCSVUseCase = new ExportToCSVUseCase(eventRepository, csvGenerator);
 const exportToXLSXUseCase = new ExportToXLSXUseCase(eventRepository, xlsxGenerator);
 
-const loginWithArtiaUseCase = new LoginWithArtiaUseCase(artiaAuthService, userRepository);
-const loginWithArtiaDBUseCase = new LoginWithArtiaDBUseCase(artiaDBService, userRepository);
-
-const registerWithFactorialUseCase = new RegisterWithFactorialUseCase(
-  factorialService,
-  userRepository,
-  supabaseAuthService
-);
-const loginUseCase = new LoginUseCase(
-  userRepository,
-  supabaseAuthService,
-  factorialService
-);
 const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
   eventRepository,
   userRepository,
@@ -255,16 +229,7 @@ const projectController = new ProjectController(
 
 const exportController = new ExportController(exportToCSVUseCase, exportToXLSXUseCase);
 
-const authController = new AuthController(
-  registerWithFactorialUseCase,
-  loginUseCase,
-  supabaseAuthService,
-  userRepository
-);
-const artiaAuthController = new ArtiaAuthController(loginWithArtiaUseCase, artiaAuthService);
-const artiaDBAuthController = new ArtiaDBAuthController(loginWithArtiaDBUseCase, artiaDBService);
-
-const factorialAuthController = new FactorialAuthController(registerWithFactorialUseCase, loginUseCase);
+const authController = new AuthController();
 const workedHoursController = new WorkedHoursController(getWorkedHoursComparisonUseCase);
 const viewController = new ViewController(getWeekViewUseCase, getRangeSummaryViewUseCase);
 
@@ -274,9 +239,6 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v1/auth', createAuthRoutes(authController));
-app.use('/api/v1/artia-auth', createArtiaAuthRoutes(artiaAuthController));
-app.use('/api/v1/artia-db', createArtiaDBAuthRoutes(artiaDBAuthController));
-app.use('/api/v1/factorial-auth', createFactorialAuthRoutes(factorialAuthController));
 app.use('/api/v1/worked-hours', createWorkedHoursRoutes(workedHoursController, authMiddleware));
 app.use('/api/v1/views', createViewRoutes(viewController, authMiddleware));
 app.use('/api/v1/events', createEventRoutes(eventController));
@@ -289,6 +251,8 @@ app.use(errorHandler);
 // Start Server
 async function startServer() {
   try {
+    assertServiceRoleConfigured('server startup');
+
     app.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Environment: ${config.nodeEnv}`);

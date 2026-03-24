@@ -18,6 +18,8 @@ export const config = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  microsoftAllowedDomain: process.env.MICROSOFT_ALLOWED_DOMAIN || 'exxata.com.br',
+  microsoftTenantId: process.env.MICROSOFT_ALLOWED_TENANT_ID || null,
   jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',

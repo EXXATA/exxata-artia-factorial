@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
+import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import GanttWeeklyTable from './GanttWeeklyTable';
 import { addDays, getWeekDays, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
@@ -23,6 +24,11 @@ export default function GanttView() {
     startDate,
     endDate,
     project: projectFilter !== 'ALL' ? projectFilter : undefined
+  });
+  useRegisterGlobalAction({
+    id: `gantt:${startDate}:${endDate}:${projectFilter}`,
+    label: 'Atualizar visão Gantt',
+    run: weekQuery.refresh
   });
   const allProjectsWeekQuery = useWeekViewData({ startDate, endDate });
 

@@ -1,0 +1,7 @@
+{
+  "name": "artia-system",
+  "private": true,
+  "scripts": {
+    "dev:local": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-local.ps1"
+  }
+}

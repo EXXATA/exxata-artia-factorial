@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useThemeStore } from '../../store/slices/uiSlice';
 import { useAuth } from '../../hooks/useAuth';
+import { useGlobalAction } from '../../contexts/GlobalActionContext';
 import DataActionsModal from '../import/DataActionsModal';
 
 export default function Header() {
@@ -9,11 +10,12 @@ export default function Header() {
   const location = useLocation();
   const { theme, toggleTheme } = useThemeStore();
   const { user, logout } = useAuth();
+  const { action, isRunning: isGlobalActionRunning, runAction } = useGlobalAction();
   const [isDataActionsOpen, setIsDataActionsOpen] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   const views = [
@@ -51,6 +53,12 @@ export default function Header() {
         return;
       }
 
+      if (pressedKey === 'r') {
+        event.preventDefault();
+        void runAction();
+        return;
+      }
+
       if (pressedKey === 't') {
         event.preventDefault();
         toggleTheme();
@@ -59,7 +67,7 @@ export default function Header() {
 
       if (pressedKey === 'l') {
         event.preventDefault();
-        handleLogout();
+        void handleLogout();
       }
     };
 
@@ -68,7 +76,7 @@ export default function Header() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [navigate, toggleTheme]);
+  }, [logout, navigate, runAction, toggleTheme]);
 
   return (
     <header className="app-header-surface">
@@ -84,6 +92,7 @@ export default function Header() {
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="app-brand-chip">Fonte: MySQL Artia</span>
                 <span className="app-brand-chip">Alt+D Dados</span>
+                <span className="app-brand-chip">Alt+R Atualizar</span>
                 <span className="app-brand-chip">Alt+T Tema</span>
               </div>
             </div>
@@ -95,6 +104,15 @@ export default function Header() {
                 {user.name}
               </span>
             )}
+            <button
+              onClick={() => void runAction()}
+              disabled={!action || isGlobalActionRunning}
+              className="app-action-button disabled:opacity-50"
+              title={action?.label || 'Atualizar a visão atual'}
+            >
+              <span>{isGlobalActionRunning ? 'Atualizando...' : 'Atualizar'}</span>
+              <span className="text-[11px] text-slate-400">Alt+R</span>
+            </button>
             <button
               onClick={() => setIsDataActionsOpen(true)}
               className="app-action-button"
@@ -112,7 +130,7 @@ export default function Header() {
               <span className="text-[11px] text-slate-400">Alt+T</span>
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="app-action-button"
               title="Sair"
             >

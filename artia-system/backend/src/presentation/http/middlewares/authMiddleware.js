@@ -1,88 +1,97 @@
-import jwt from 'jsonwebtoken';
+import { ResolveAuthenticatedUserUseCase } from '../../../application/use-cases/auth/ResolveAuthenticatedUserUseCase.js';
+import { config } from '../../../config/app.js';
+import { isAuthInfrastructureError } from '../../../domain/errors/AuthError.js';
+import { CorporateMicrosoftIdentityPolicy } from '../../../domain/services/CorporateMicrosoftIdentityPolicy.js';
+import { SupabaseAuthService } from '../../../infrastructure/auth/SupabaseAuthService.js';
 import { UserRepository } from '../../../infrastructure/database/supabase/UserRepository.js';
-import { getUserFromAccessToken } from '../../../infrastructure/database/supabase/supabaseClient.js';
+import { toAuthenticatedRequestUser } from '../presenters/AuthenticatedUserPresenter.js';
 
 const userRepository = new UserRepository();
+const supabaseAuthService = new SupabaseAuthService();
+const corporateMicrosoftIdentityPolicy = new CorporateMicrosoftIdentityPolicy({
+  allowedDomain: config.microsoftAllowedDomain,
+  allowedTenantId: config.microsoftTenantId
+});
+const resolveAuthenticatedUserUseCase = new ResolveAuthenticatedUserUseCase(
+  userRepository,
+  corporateMicrosoftIdentityPolicy
+);
+
+const forbiddenErrorCodes = new Set([
+  'AUTH_FORBIDDEN_DOMAIN',
+  'AUTH_FORBIDDEN_PROVIDER',
+  'AUTH_FORBIDDEN_TENANT',
+  'USER_PROFILE_NOT_PROVISIONED',
+  'USER_PROFILE_RECONCILIATION_REQUIRED'
+]);
+const unauthorizedErrorCodes = new Set(['AUTH_INVALID_SESSION']);
+
+function buildErrorResponse(res, status, message) {
+  return res.status(status).json({
+    success: false,
+    message
+  });
+}
+
+function extractBearerToken(authHeader) {
+  if (!authHeader) {
+    return null;
+  }
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || !/^Bearer$/i.test(parts[0])) {
+    return null;
+  }
+
+  return parts[1];
+}
 
 export async function authMiddleware(req, res, next) {
+  const accessToken = extractBearerToken(req.headers.authorization);
+
+  if (!accessToken) {
+    return buildErrorResponse(res, 401, 'Sessao invalida ou ausente.');
+  }
+
   try {
-    const authHeader = req.headers.authorization;
+    const authUser = await supabaseAuthService.getUserFromAccessToken(accessToken);
+    const profile = await resolveAuthenticatedUserUseCase.execute(authUser);
 
-    if (!authHeader) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided'
-      });
-    }
+    req.authProfile = profile;
+    req.user = toAuthenticatedRequestUser(profile);
+    req.auth = {
+      type: 'supabase',
+      accessToken
+    };
 
-    const parts = authHeader.split(' ');
-
-    if (parts.length !== 2) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token error'
-      });
-    }
-
-    const [scheme, token] = parts;
-
-    if (!/^Bearer$/i.test(scheme)) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token malformatted'
-      });
-    }
-
-    try {
-      const authUser = await getUserFromAccessToken(token);
-      if (authUser) {
-        const profile = await userRepository.findById(authUser.id);
-
-        req.user = {
-          userId: authUser.id,
-          id: authUser.id,
-          email: authUser.email,
-          artiaUserId: profile?.artiaUserId || null,
-          factorialEmployeeId: profile?.factorialEmployeeId || null,
-          name: profile?.name || authUser.user_metadata?.name || null
-        };
-        req.auth = {
-          type: 'supabase',
-          accessToken: token
-        };
-
-        return next();
-      }
-    } catch (error) {
-      // Fallback temporário para tokens legados durante a migração.
-    }
-
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).json({
-          success: false,
-          message: 'Token invalid'
-        });
-      }
-
-      req.user = {
-        userId: decoded.userId,
-        id: decoded.userId,
-        email: decoded.email,
-        artiaUserId: decoded.artiaUserId,
-        factorialEmployeeId: decoded.factorialEmployeeId
-      };
-      req.auth = {
-        type: 'legacy',
-        accessToken: null
-      };
-
-      return next();
-    });
+    return next();
   } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Token invalid'
-    });
+    if (forbiddenErrorCodes.has(error.code)) {
+      return buildErrorResponse(res, 403, error.message);
+    }
+
+    if (unauthorizedErrorCodes.has(error.code)) {
+      return buildErrorResponse(res, 401, error.message || 'Sessao invalida ou expirada.');
+    }
+
+    if (isAuthInfrastructureError(error)) {
+      console.error('[authMiddleware] infrastructure error:', error);
+      return buildErrorResponse(
+        res,
+        error.statusCode || 503,
+        config.nodeEnv === 'production'
+          ? 'Servico de autenticacao indisponivel no momento.'
+          : error.message
+      );
+    }
+
+    console.error('[authMiddleware] unexpected error:', error);
+    return buildErrorResponse(
+      res,
+      500,
+      config.nodeEnv === 'production'
+        ? 'Falha inesperada ao resolver autenticacao.'
+        : (error.message || 'Falha inesperada ao resolver autenticacao.')
+    );
   }
 }

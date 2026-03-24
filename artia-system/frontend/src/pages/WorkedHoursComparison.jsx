@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
+import { useRegisterGlobalAction } from '../hooks/useRegisterGlobalAction';
 import ComparisonFilters from '../components/comparison/ComparisonFilters';
 import ComparisonResultsTable from '../components/comparison/ComparisonResultsTable';
 import ComparisonSidePanel from '../components/comparison/ComparisonSidePanel';
@@ -38,6 +39,11 @@ export default function WorkedHoursComparison() {
     endDate,
     project: projectFilter !== 'ALL' ? projectFilter : undefined,
     activity: activityFilter !== 'ALL' ? activityFilter : undefined
+  });
+  useRegisterGlobalAction({
+    id: `comparison:${startDate}:${endDate}:${projectFilter}:${activityFilter}`,
+    label: 'Atualizar comparação',
+    run: comparisonQuery.refresh
   });
   const allProjectsQuery = useWorkedHoursComparison({ startDate, endDate });
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import EventModal from '../calendar/EventModal';
 import ArtiaRemoteEntriesModal from '../calendar/ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
+import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import TableDetailTable from './TableDetailTable';
 import TableSummaryTable from './TableSummaryTable';
 import { useWeekViewData } from '../../hooks/useWeekViewData';
@@ -51,6 +52,11 @@ export default function TableView() {
   });
 
   const activeQuery = isDetailedMode ? detailQuery : summaryQuery;
+  useRegisterGlobalAction({
+    id: `table:${startDate}:${endDate}:${projectFilter}:${activityFilter}:${isDetailedMode ? 'detail' : 'summary'}`,
+    label: 'Atualizar tabela atual',
+    run: activeQuery.refresh
+  });
   const activeData = activeQuery.data || null;
   const filterSourceData = (isDetailedMode ? detailFilterSourceQuery.data : summaryFilterSourceQuery.data) || activeData;
   const projectOptions = useMemo(

@@ -1,51 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Button from '../components/common/Button/Button';
-import Input from '../components/common/Input/Input';
 import { useAuth } from '../hooks/useAuth';
-import { factorialAuthService } from '../services/api/factorialAuthService';
+import { getApiErrorMessage } from '../services/api/apiError';
+import { microsoftAuthService } from '../services/auth/microsoftAuthService';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isFirstAccess, setIsFirstAccess] = useState(false);
-  const { login } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!email || !password) {
-      toast.error('Preencha email e senha');
-      return;
+  useEffect(() => {
+    if (!isAuthLoading && isAuthenticated) {
+      navigate('/', { replace: true });
     }
+  }, [isAuthenticated, isAuthLoading, navigate]);
 
-    if (password.length < 8) {
-      toast.error('A senha deve ter no mínimo 8 caracteres');
-      return;
-    }
-
+  const handleMicrosoftLogin = async () => {
     setIsLoading(true);
 
     try {
-      const response = isFirstAccess
-        ? await factorialAuthService.register(email, password)
-        : await factorialAuthService.login(email, password);
-
-      if (!response.success) {
-        toast.error(response.message);
-        return;
-      }
-
-      await login(response.data);
-      toast.success(`Bem-vindo, ${response.data.user.name}!`);
-      navigate('/', { replace: true });
+      await microsoftAuthService.signIn();
     } catch (error) {
-      toast.error(error.message || 'Erro ao autenticar');
-    } finally {
       setIsLoading(false);
+      toast.error(getApiErrorMessage(error, 'Nao foi possivel iniciar o login Microsoft.'));
     }
   };
 
@@ -62,71 +41,26 @@ export default function LoginPage() {
               </h1>
             </div>
             <p className="text-sm text-light-muted dark:text-dark-muted">
-              {isFirstAccess ? 'Crie sua conta' : 'Entre com suas credenciais'}
+              Entre com sua conta corporativa Microsoft da Exxata.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Email do Factorial
-              </label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu-email@empresa.com"
-                disabled={isLoading}
-                autoFocus
-              />
-            </div>
+          <div className="space-y-4">
+            <Button
+              variant="primary"
+              type="button"
+              disabled={isLoading || isAuthLoading}
+              className="w-full"
+              onClick={handleMicrosoftLogin}
+            >
+              {isLoading ? 'Redirecionando...' : 'Entrar com Microsoft'}
+            </Button>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Senha {isFirstAccess && '(mínimo 8 caracteres)'}
-              </label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                disabled={isLoading}
-              />
+            <div className="p-4 bg-light-panel2 dark:bg-dark-panel2 rounded-lg">
+              <p className="text-xs text-light-muted dark:text-dark-muted">
+                <strong>Acesso:</strong> apenas contas corporativas <code>@exxata.com.br</code> autenticadas via Microsoft.
+              </p>
             </div>
-
-            <div className="pt-4">
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading
-                  ? (isFirstAccess ? 'Criando conta...' : 'Autenticando...')
-                  : (isFirstAccess ? 'Criar Conta' : 'Entrar')
-                }
-              </Button>
-            </div>
-
-            <div className="text-center mt-4">
-              <button
-                type="button"
-                onClick={() => setIsFirstAccess(!isFirstAccess)}
-                className="text-sm text-primary hover:underline"
-                disabled={isLoading}
-              >
-                {isFirstAccess ? 'Já tenho conta' : 'Primeiro acesso?'}
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-6 p-4 bg-light-panel2 dark:bg-dark-panel2 rounded-lg">
-            <p className="text-xs text-light-muted dark:text-dark-muted">
-              <strong>Nota:</strong> {isFirstAccess
-                ? 'Seu email deve estar cadastrado no Factorial. A conta será criada após validação.'
-                : 'Use o email do Factorial e a senha que você criou no primeiro acesso.'
-              }
-            </p>
           </div>
         </div>
       </div>

@@ -1,8 +1,21 @@
 import axios from 'axios';
-import { clearAuthState, getStoredToken } from '../auth/authStorage';
+import { clearAuthState } from '../auth/authStorage';
 import { supabase } from '../supabase/supabaseClient';
+import { normalizeApiError } from './apiError';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+function resolveApiBaseUrl() {
+  const configuredApiUrl = import.meta.env.VITE_API_URL || '/api/v1';
+  const proxyTarget = import.meta.env.VITE_API_PROXY_TARGET;
+  const isLocalHost = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+  if (import.meta.env.DEV && isLocalHost && proxyTarget && configuredApiUrl.startsWith('/')) {
+    return `${proxyTarget.replace('://localhost', '://127.0.0.1').replace(/\/$/, '')}${configuredApiUrl}`;
+  }
+
+  return configuredApiUrl;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -12,12 +25,6 @@ const apiClient = axios.create({
 });
 
 async function resolveAccessToken() {
-  const storedToken = getStoredToken();
-
-  if (storedToken) {
-    return storedToken;
-  }
-
   const {
     data: { session }
   } = await supabase.auth.getSession();
@@ -41,7 +48,9 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const normalizedError = normalizeApiError(error);
+
+    if (normalizedError.response?.status === 401) {
       await supabase.auth.signOut();
       clearAuthState();
 
@@ -50,7 +59,7 @@ apiClient.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error);
+    return Promise.reject(normalizedError);
   }
 );
 

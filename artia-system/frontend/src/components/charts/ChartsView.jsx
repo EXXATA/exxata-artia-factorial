@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArcElement, BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Tooltip } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
+import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { useThemeStore } from '../../store/slices/uiSlice';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import ChartsToolbar from './ChartsToolbar';
@@ -66,6 +67,11 @@ export default function ChartsView() {
     endDate,
     project: projectFilter !== 'ALL' ? projectFilter : undefined,
     enabled: Boolean(startDate && endDate)
+  });
+  useRegisterGlobalAction({
+    id: `charts:${startDate}:${endDate}:${projectFilter}`,
+    label: 'Atualizar gráficos',
+    run: comparisonQuery.refresh
   });
   const allProjectsQuery = useWorkedHoursComparison({ startDate, endDate, enabled: Boolean(startDate && endDate) });
 
