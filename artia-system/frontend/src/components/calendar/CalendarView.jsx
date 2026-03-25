@@ -1,14 +1,44 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import WorkspacePage from '../layout/WorkspacePage';
 import { useMoveEvent } from '../../hooks/useEvents';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
-import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { addDays, getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
-import { buildCalendarDayBuckets, combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getDefaultDraftFromSlot, getDraftFromRange, getEventMinuteRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
+import {
+  buildCalendarDayHeaderMetrics,
+  DAY_HEADER_COLLAPSED_HEIGHT,
+  getCalendarViewportHeight,
+  getDefaultCalendarScrollTop,
+  TIME_COLUMN_WIDTH
+} from './calendarViewport.js';
+import {
+  buildCalendarDayBuckets,
+  combineDayAndTime,
+  extractTimeValue,
+  CALENDAR_DEFAULT_EVENT_DURATION,
+  CALENDAR_END_HOUR,
+  CALENDAR_GRID_END_MINUTES,
+  CALENDAR_GRID_START_MINUTES,
+  CALENDAR_MIN_EVENT_MINUTES,
+  CALENDAR_SNAP_MINUTES,
+  CALENDAR_START_HOUR,
+  ROW_HEIGHT,
+  SLOT_MINUTES,
+  getDefaultDraftFromSlot,
+  getDraftFromRange,
+  getEventMinuteRange,
+  getEventMinutesByDay,
+  getEventPosition,
+  getRangePosition,
+  gridOffsetToMinutes,
+  minutesToTime,
+  snapMinutes
+} from '../../utils/eventViewUtils';
 import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../utils/artiaSyncUtils';
 
-const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const DAY_NAMES = ['Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado', 'Domingo'];
 
 const EMPTY_SYNC_BREAKDOWN = {
   totalMinutes: 0,
@@ -19,10 +49,6 @@ const EMPTY_SYNC_BREAKDOWN = {
 
 const EventModal = lazy(() => import('./EventModal'));
 const ArtiaRemoteEntriesModal = lazy(() => import('./ArtiaRemoteEntriesModal'));
-
-function formatHoursFromComparison(hours) {
-  return formatWorkedTime(Math.round((Number(hours) || 0) * 60));
-}
 
 function ModalLoadingFallback() {
   return (
@@ -41,10 +67,16 @@ export default function CalendarView() {
   const [draftEvent, setDraftEvent] = useState(null);
   const [selection, setSelection] = useState(null);
   const [interaction, setInteraction] = useState(null);
+  const [expandedDayIso, setExpandedDayIso] = useState(null);
+  const [boardViewportHeight, setBoardViewportHeight] = useState(420);
+  const [scrollAnchorKey, setScrollAnchorKey] = useState(0);
+  const [topbarContextHost, setTopbarContextHost] = useState(null);
   const [selectedRemoteEntries, setSelectedRemoteEntries] = useState([]);
   const [remoteModalTitle, setRemoteModalTitle] = useState('Lancamentos do Artia');
   const [remoteModalSubtitle, setRemoteModalSubtitle] = useState('Visualizacao somente leitura dos lancamentos encontrados no Artia via MySQL.');
   const dayColumnRefs = useRef({});
+  const boardShellRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const queryClient = useQueryClient();
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
@@ -62,7 +94,7 @@ export default function CalendarView() {
 
   useRegisterGlobalAction({
     id: `calendar:${startDate}:${endDate}`,
-    label: 'Atualizar semana visível',
+    label: 'Atualizar semana visivel',
     run: refresh
   });
 
@@ -81,15 +113,10 @@ export default function CalendarView() {
     minutesByDay,
     syncBreakdownByDay
   }), [dailyDetailsByDate, events, minutesByDay, syncBreakdownByDay, weekDays]);
-  const accessibleProjectCount = typeof comparisonData?.meta?.accessibleProjectCount === 'number'
-    ? comparisonData.meta.accessibleProjectCount
-    : null;
-  const projectsLoading = isLoading && !comparisonData;
-  const projects = useMemo(() => ({
-    length: accessibleProjectCount ?? 0
-  }), [accessibleProjectCount]);
   const slotCount = ((CALENDAR_END_HOUR - CALENDAR_START_HOUR) * 60) / SLOT_MINUTES;
   const slots = useMemo(() => Array.from({ length: slotCount }, (_, index) => index), [slotCount]);
+  const isEventModalOpen = Boolean(selectedEvent || draftEvent);
+  const isRemoteEntriesModalOpen = selectedRemoteEntries.length > 0;
 
   const getColumnElement = (dayIso) => dayColumnRefs.current[dayIso] || null;
 
@@ -272,7 +299,83 @@ export default function CalendarView() {
     };
   }, [interaction, moveMutation, selection]);
 
+  useEffect(() => {
+    setTopbarContextHost(document.getElementById('workspace-topbar-context'));
+  }, []);
+
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      const shell = boardShellRef.current;
+
+      if (!shell) {
+        return;
+      }
+
+      const nextHeight = getCalendarViewportHeight({
+        viewportHeight: window.innerHeight,
+        shellTop: shell.getBoundingClientRect().top,
+        bottomOffset: 24,
+        minHeight: 420
+      });
+
+      setBoardViewportHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    updateViewportHeight();
+
+    const frame = window.requestAnimationFrame(updateViewportHeight);
+    window.addEventListener('resize', updateViewportHeight);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updateViewportHeight);
+    };
+  }, []);
+
+  useEffect(() => {
+    setExpandedDayIso(null);
+  }, [startDate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setExpandedDayIso(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+
+    if (!container) {
+      return undefined;
+    }
+
+    const nextScrollTop = getDefaultCalendarScrollTop({
+      calendarStartHour: CALENDAR_START_HOUR,
+      rowHeight: ROW_HEIGHT,
+      slotMinutes: SLOT_MINUTES
+    });
+
+    let settleFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      container.scrollTo({ top: nextScrollTop, behavior: 'auto' });
+      settleFrame = window.requestAnimationFrame(() => {
+        container.scrollTo({ top: nextScrollTop, behavior: 'auto' });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(settleFrame);
+    };
+  }, [boardViewportHeight, isLoading, scrollAnchorKey, startDate]);
+
   const handlePrevWeek = () => {
+    setScrollAnchorKey((current) => current + 1);
     setWeekStart((current) => {
       const next = new Date(current);
       next.setDate(next.getDate() - 7);
@@ -281,6 +384,7 @@ export default function CalendarView() {
   };
 
   const handleNextWeek = () => {
+    setScrollAnchorKey((current) => current + 1);
     setWeekStart((current) => {
       const next = new Date(current);
       next.setDate(next.getDate() + 7);
@@ -289,11 +393,9 @@ export default function CalendarView() {
   };
 
   const handleToday = () => {
+    setScrollAnchorKey((current) => current + 1);
     setWeekStart(startOfWeekMonday(new Date()));
   };
-
-  const isEventModalOpen = Boolean(selectedEvent || draftEvent);
-  const isRemoteEntriesModalOpen = selectedRemoteEntries.length > 0;
 
   const handleGridMouseDown = (dayIso, event) => {
     if (event.button !== 0) return;
@@ -302,6 +404,7 @@ export default function CalendarView() {
     const startMinutes = getMinutesFromPointer(dayIso, event.clientY, 'floor');
 
     event.preventDefault();
+    setExpandedDayIso(null);
     setSelectedEvent(null);
     setDraftEvent(null);
     setSelection({
@@ -318,6 +421,7 @@ export default function CalendarView() {
 
     event.preventDefault();
     event.stopPropagation();
+    setExpandedDayIso(null);
 
     if (calendarEvent.hasProjectAccess === false) {
       setDraftEvent(null);
@@ -351,6 +455,7 @@ export default function CalendarView() {
 
     event.preventDefault();
     event.stopPropagation();
+    setExpandedDayIso(null);
 
     const { startMinutes, endMinutes } = getEventBounds(calendarEvent);
 
@@ -403,27 +508,30 @@ export default function CalendarView() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="ui-empty-state max-w-md px-6 py-5">
-          Carregando calendário...
+          Carregando calendario...
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="view-shell">
-      <div className="ui-toolbar">
-        <div className="ui-toolbar-row">
-          <div className="ui-toolbar-group">
+  const topbarCalendarControls = topbarContextHost
+    ? createPortal(
+      <div className="workspace-topbar-context-scroll">
+        <div className="workspace-topbar-context-group">
           <button
             onClick={handlePrevWeek}
             onMouseEnter={() => prefetchAdjacentWeek(-7)}
             onFocus={() => prefetchAdjacentWeek(-7)}
             disabled={isFetching}
-            className="app-action-button disabled:opacity-50"
+            className="workspace-action-button disabled:opacity-50"
           >
             Sem. anterior
           </button>
-          <button onClick={handleToday} disabled={isFetching} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50">
+          <button
+            onClick={handleToday}
+            disabled={isFetching}
+            className="workspace-action-button workspace-action-button-primary disabled:opacity-50"
+          >
             Hoje
           </button>
           <button
@@ -431,160 +539,167 @@ export default function CalendarView() {
             onMouseEnter={() => prefetchAdjacentWeek(7)}
             onFocus={() => prefetchAdjacentWeek(7)}
             disabled={isFetching}
-            className="app-action-button disabled:opacity-50"
+            className="workspace-action-button disabled:opacity-50"
           >
             Prox. semana
           </button>
-          </div>
-
-          <div className="ui-chip ui-chip-accent text-sm font-semibold">
-            {formatWeekRangeLabel(weekStart)}
-          </div>
-
-          <div className={`ui-chip ${(isLoading && !comparisonData) ? 'ui-chip-warning' : 'ui-chip-success'}`}>
-            <span className={`h-2.5 w-2.5 rounded-full ${(isLoading && !comparisonData) ? 'bg-amber-400' : 'bg-emerald-500'}`} />
-            <span>{projectsLoading ? 'Base Artia MySQL carregando' : `Base Artia MySQL · ${projects.length} projetos`}</span>
-          </div>
-          {isFetching ? (
-            <div className="ui-chip ui-chip-accent">
-              <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              Atualizando semana
-            </div>
-          ) : null}
         </div>
       </div>
+    , topbarContextHost)
+    : null;
 
-      <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
-        <span className="ui-chip">Arraste na grade para criar</span>
-        <span className="ui-chip">Arraste o bloco para mover</span>
-        <span className="ui-chip">Arraste as bordas para redimensionar</span>
-        <span className="ui-chip">Grade completa: 00:00 - 24:00</span>
-        <span className="ui-chip">Precisao: 1 minuto</span>
-        <span className="ui-chip ui-chip-success"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Sincronizado</span>
-        <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Marcado manualmente</span>
-        <span className="ui-chip"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
-        <span className="ui-chip ui-chip-violet"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />Somente Artia</span>
-        <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Historico sem acesso atual</span>
-      </div>
+  return (
+    <>
+      {topbarCalendarControls}
+      <WorkspacePage>
+        <div ref={boardShellRef} className="ui-table-shell calendar-board-shell" style={{ height: boardViewportHeight }}>
+          <div ref={scrollContainerRef} className="ui-table-scroll calendar-board-scroll">
+            <div className="min-w-[1120px]">
+              <div
+                className="calendar-board-header grid border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#111827]"
+                style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(0, 1fr))` }}
+              >
+                <div className="calendar-board-corner border-r border-slate-200 px-2 py-2.5 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:border-white/10 dark:text-slate-400">
+                  Horarios
+                </div>
 
-      <WorkedHoursRangePanel
-        startDate={startDate}
-        endDate={endDate}
-        stats={comparisonData?.stats || null}
-        isLoading={isLoading && !comparisonData}
-        isFetching={isFetching}
-        onRefresh={refresh}
-        title="Conciliação diária da semana"
-        subtitle="Validação dia a dia entre Factorial, sistema e Artia na semana visível"
-      />
-
-      <div className="ui-table-shell">
-        <div className="ui-table-scroll">
-          <div className="min-w-[1120px]">
-            <div className="grid grid-cols-[88px_repeat(7,minmax(0,1fr))] border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#111827]">
-              <div className="border-r border-slate-200 px-3 py-4 text-xs uppercase tracking-[0.18em] text-slate-500 dark:border-white/10 dark:text-slate-400">
-                Horários
-              </div>
-              {weekDays.map((day, index) => {
-                const dayIso = formatDateISO(day);
-                const dayBucket = dayBuckets[dayIso];
-                const dayMinutes = dayBucket?.dayMinutes || 0;
-                const dayComparison = dayBucket?.dayComparison || null;
-                const syncBreakdown = dayBucket?.syncBreakdown || EMPTY_SYNC_BREAKDOWN;
-                const artiaMinutes = dayBucket?.artiaMinutes || 0;
-                const unpositionedRemoteEntries = dayBucket?.unpositionedRemoteEntries || [];
-
-                return (
-                  <div key={dayIso} className={`border-r border-slate-200 px-3 py-3 dark:border-white/10 ${isToday(day) ? 'bg-primary/5' : ''}`}>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{DAY_NAMES[index]}</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{day.toLocaleDateString('pt-BR')}</div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {isToday(day) && <span className="ui-chip ui-chip-accent">Hoje</span>}
-                      <span className="ui-chip ui-chip-success">
-                        Tempo Trabalhado: <span className="font-semibold">{formatWorkedTime(dayMinutes)}</span>
-                      </span>
-                      <span className="ui-chip">
-                        Factorial: <span className="font-semibold text-slate-900 dark:text-white">{formatHoursFromComparison(dayComparison?.factorialHours)}</span>
-                      </span>
-                      <span className="ui-chip ui-chip-success">
-                        Artia: <span className="font-semibold">{formatWorkedTime(artiaMinutes)}</span>
-                      </span>
-                      {syncBreakdown.pendingMinutes > 0 && (
-                        <span className="ui-chip">
-                          Pendente: <span className="font-semibold text-slate-900 dark:text-white">{formatWorkedTime(syncBreakdown.pendingMinutes)}</span>
-                        </span>
-                      )}
-                      {dayComparison?.remoteOnlyArtiaEntries?.length ? (
-                        <span className="ui-chip ui-chip-violet">
-                          Só Artia: <span className="font-semibold">{dayComparison.remoteOnlyArtiaEntries.length}</span>
-                        </span>
-                      ) : null}
-                      {unpositionedRemoteEntries.length ? (
-                        <button
-                          type="button"
-                          onClick={() => openRemoteEntriesModal(unpositionedRemoteEntries, {
-                            title: `Lancamentos do Artia sem posicao em ${day.toLocaleDateString('pt-BR')}`,
-                            subtitle: 'Itens sem horario valido para posicionamento na grade. Visualizacao somente leitura.'
-                          })}
-                          className="ui-chip border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                        >
-                          Sem posicao: <span className="font-semibold">{unpositionedRemoteEntries.length}</span>
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex">
-              <div className="w-[88px] shrink-0 border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#0c1423]">
-                {slots.map((slotIndex) => {
-                  const minutes = CALENDAR_START_HOUR * 60 + slotIndex * SLOT_MINUTES;
-                  const hourLabel = minutes % 60 === 0 ? `${String(Math.floor(minutes / 60)).padStart(2, '0')}:00` : '';
+                {weekDays.map((day, index) => {
+                  const dayIso = formatDateISO(day);
+                  const dayBucket = dayBuckets[dayIso];
+                  const dayMinutes = dayBucket?.dayMinutes || 0;
+                  const dayComparison = dayBucket?.dayComparison || null;
+                  const syncBreakdown = dayBucket?.syncBreakdown || EMPTY_SYNC_BREAKDOWN;
+                  const artiaMinutes = dayBucket?.artiaMinutes || 0;
+                  const unpositionedRemoteEntries = dayBucket?.unpositionedRemoteEntries || [];
+                  const headerMetrics = buildCalendarDayHeaderMetrics({
+                    artiaMinutes,
+                    dayComparison,
+                    dayMinutes,
+                    syncBreakdown,
+                    unpositionedRemoteEntries
+                  });
+                  const isExpanded = expandedDayIso === dayIso;
 
                   return (
-                    <div key={slotIndex} className="border-b border-slate-200 px-3 py-1 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400" style={{ height: ROW_HEIGHT }}>
-                      {hourLabel}
+                    <div
+                      key={dayIso}
+                      data-expanded={isExpanded ? 'true' : 'false'}
+                      className={`calendar-day-header border-r border-slate-200 px-3 py-2 dark:border-white/10 ${isToday(day) ? 'bg-primary/5' : ''}`}
+                      style={{ minHeight: DAY_HEADER_COLLAPSED_HEIGHT }}
+                    >
+                      <button
+                        type="button"
+                        className="calendar-day-toggle"
+                        onClick={() => setExpandedDayIso((current) => (current === dayIso ? null : dayIso))}
+                        aria-expanded={isExpanded}
+                      >
+                        <div className="calendar-day-title flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{DAY_NAMES[index]}</div>
+                            <div className="mt-0.5 text-[15px] font-semibold text-slate-900 dark:text-white">{day.toLocaleDateString('pt-BR')}</div>
+                          </div>
+                          {isToday(day) ? <span className="ui-chip ui-chip-accent px-2.5 py-1 text-[10px]">Hoje</span> : null}
+                        </div>
+
+                        <div className="calendar-day-footer mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          {headerMetrics.footer.map((item) => (
+                            <span key={`${dayIso}-${item.label}`}>
+                              {item.label} <strong className="text-slate-900 dark:text-white">{item.value}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="calendar-day-detail-popover">
+                          {headerMetrics.details.map((item) => {
+                            const detailClassName = item.tone === 'warning'
+                              ? 'calendar-day-detail-item calendar-day-detail-item-warning'
+                              : item.tone === 'violet'
+                                ? 'calendar-day-detail-item calendar-day-detail-item-violet'
+                                : 'calendar-day-detail-item';
+
+                            if (item.label === 'Sem posicao') {
+                              return (
+                                <button
+                                  type="button"
+                                  key={`${dayIso}-${item.label}`}
+                                  onClick={() => openRemoteEntriesModal(unpositionedRemoteEntries, {
+                                    title: `Lancamentos do Artia sem posicao em ${day.toLocaleDateString('pt-BR')}`,
+                                    subtitle: 'Itens sem horario valido para posicionamento na grade. Visualizacao somente leitura.'
+                                  })}
+                                  className={detailClassName}
+                                >
+                                  <span>{item.label}</span>
+                                  <strong>{item.value}</strong>
+                                </button>
+                              );
+                            }
+
+                            return (
+                              <div key={`${dayIso}-${item.label}`} className={detailClassName}>
+                                <span>{item.label}</span>
+                                <strong>{item.value}</strong>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
 
-              <div className="grid flex-1 grid-cols-7">
-                {weekDays.map((day) => {
-                  const dayIso = formatDateISO(day);
-                  const dayBucket = dayBuckets[dayIso];
-                  const dayEvents = dayBucket?.dayEvents || [];
-                  const remoteEntryLayouts = dayBucket?.remoteEntryLayouts || [];
+              <div className="flex">
+                <div
+                  className="calendar-time-column shrink-0 border-r border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#0c1423]"
+                  style={{ width: TIME_COLUMN_WIDTH }}
+                >
+                  {slots.map((slotIndex) => {
+                    const minutes = CALENDAR_START_HOUR * 60 + slotIndex * SLOT_MINUTES;
+                    const hourLabel = minutes % 60 === 0 ? `${String(Math.floor(minutes / 60)).padStart(2, '0')}:00` : '';
 
-                  return (
-                    <div
-                      key={dayIso}
-                      ref={(node) => {
-                        if (node) {
-                          dayColumnRefs.current[dayIso] = node;
-                        }
-                      }}
-                      data-day-column="true"
-                      data-day-iso={dayIso}
-                      onMouseDown={(event) => handleGridMouseDown(dayIso, event)}
-                      className={`relative border-r border-slate-200 bg-white dark:border-white/10 dark:bg-transparent ${isToday(day) ? 'bg-primary/5 dark:bg-primary/5' : ''} ${selection?.dayIso === dayIso ? 'cursor-row-resize' : interaction?.dayIso === dayIso ? 'cursor-grabbing' : 'cursor-cell'}`}
-                      style={{ height: slotCount * ROW_HEIGHT }}
-                    >
-                      {slots.map((slotIndex) => (
-                        <div
-                          key={`${dayIso}-${slotIndex}`}
-                          className="pointer-events-none absolute left-0 right-0 border-b border-slate-100 transition dark:border-white/5"
-                          style={{ top: slotIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
-                        />
-                      ))}
+                    return (
+                      <div key={slotIndex} className="calendar-time-cell border-b border-slate-200 px-2 py-1 text-[11px] text-slate-500 dark:border-white/5 dark:text-slate-400" style={{ height: ROW_HEIGHT }}>
+                        {hourLabel}
+                      </div>
+                    );
+                  })}
+                </div>
 
-                      {renderSelectionPreview(dayIso)}
-                      {renderInteractionPreview(dayIso)}
+                <div className="grid flex-1 grid-cols-7">
+                  {weekDays.map((day) => {
+                    const dayIso = formatDateISO(day);
+                    const dayBucket = dayBuckets[dayIso];
+                    const dayEvents = dayBucket?.dayEvents || [];
+                    const remoteEntryLayouts = dayBucket?.remoteEntryLayouts || [];
 
-                      {remoteEntryLayouts.map(({ entry, position }) => {
-                        return (
+                    return (
+                      <div
+                        key={dayIso}
+                        ref={(node) => {
+                          if (node) {
+                            dayColumnRefs.current[dayIso] = node;
+                          }
+                        }}
+                        data-day-column="true"
+                        data-day-iso={dayIso}
+                        onMouseDown={(event) => handleGridMouseDown(dayIso, event)}
+                        className={`relative border-r border-slate-200 bg-white dark:border-white/10 dark:bg-transparent ${isToday(day) ? 'bg-primary/5 dark:bg-primary/5' : ''} ${selection?.dayIso === dayIso ? 'cursor-row-resize' : interaction?.dayIso === dayIso ? 'cursor-grabbing' : 'cursor-cell'}`}
+                        style={{ height: slotCount * ROW_HEIGHT }}
+                      >
+                        {slots.map((slotIndex) => (
+                          <div
+                            key={`${dayIso}-${slotIndex}`}
+                            className="pointer-events-none absolute left-0 right-0 border-b border-slate-100 transition dark:border-white/5"
+                            style={{ top: slotIndex * ROW_HEIGHT, height: ROW_HEIGHT }}
+                          />
+                        ))}
+
+                        {renderSelectionPreview(dayIso)}
+                        {renderInteractionPreview(dayIso)}
+
+                        {remoteEntryLayouts.map(({ entry, position }) => (
                           <button
                             type="button"
                             key={`artia-only-${entry.id}`}
@@ -601,13 +716,17 @@ export default function CalendarView() {
                             }}
                             className="absolute left-1.5 right-1.5 z-[1] overflow-hidden rounded-2xl border border-violet-300/40 bg-[linear-gradient(180deg,rgba(139,92,246,0.1),rgba(139,92,246,0.25))] dark:bg-[linear-gradient(180deg,rgba(139,92,246,0.15),rgba(49,46,129,0.5))] px-2 py-2 text-left shadow-sm opacity-90"
                             style={{ top: position.top + 2, height: position.height }}
-                            title="Lançamento remoto do Artia (não editável)"
+                            title="Lancamento remoto do Artia (nao editavel)"
                           >
                             <div className="inline-flex rounded-full bg-violet-600/10 dark:bg-black/30 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:text-violet-100 shadow-sm border border-violet-500/20">
-                              {extractTimeValue(entry.start, entry.day)} – {extractTimeValue(entry.end, entry.day)}
+                              {extractTimeValue(entry.start, entry.day)} - {extractTimeValue(entry.end, entry.day)}
                             </div>
-                            <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">{entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'}</div>
-                            <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">{entry.activityLabel || entry.activity || 'Atividade Artia'}</div>
+                            <div className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white opacity-80">
+                              {entry.projectDisplayLabel || entry.projectLabel || entry.project || 'Projeto Artia'}
+                            </div>
+                            <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">
+                              {entry.activityLabel || entry.activity || 'Atividade Artia'}
+                            </div>
                             {entry.endEstimated ? (
                               <div className="mt-1 inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-100">
                                 Horario estimado
@@ -615,86 +734,86 @@ export default function CalendarView() {
                             ) : null}
                             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-200">
                               <span className="h-1.5 w-1.5 rounded-full bg-violet-500"></span>
-                              Lançado no Artia
+                              Lancado no Artia
                             </div>
                           </button>
-                        );
-                      })}
+                        ))}
 
-                      {dayEvents.map((event) => {
-                        if (interaction?.eventId === event.id) {
-                          return null;
-                        }
+                        {dayEvents.map((event) => {
+                          if (interaction?.eventId === event.id) {
+                            return null;
+                          }
 
-                        const position = getEventPosition(event);
-                        const syncPresentation = getArtiaSyncPresentation(event.artiaSyncStatus);
-                        const isLocked = event.hasProjectAccess === false;
+                          const position = getEventPosition(event);
+                          const syncPresentation = getArtiaSyncPresentation(event.artiaSyncStatus);
+                          const isLocked = event.hasProjectAccess === false;
 
-                        return (
-                          <div
-                            key={event.id}
-                            role="button"
-                            tabIndex={0}
-                            aria-disabled={isLocked}
-                            data-event-block="true"
-                            onMouseDown={(mouseEvent) => handleEventMouseDown(event, mouseEvent)}
-                            onKeyDown={(keyboardEvent) => {
-                              if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
-                                keyboardEvent.preventDefault();
-                                setDraftEvent(null);
-                                setSelectedEvent(event);
-                              }
-                            }}
-                            className={`absolute left-1.5 right-1.5 overflow-hidden rounded-2xl border px-2 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-primary/60 ${isLocked ? 'cursor-not-allowed opacity-85 shadow-sm' : 'shadow-[0_12px_24px_rgba(0,0,0,0.25)] hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]'} ${syncPresentation.blockClassName}`}
-                            style={{ top: position.top + 2, height: position.height }}
-                            title={isLocked ? 'Historico sem acesso atual ao projeto no Artia' : undefined}
-                          >
-                            {!isLocked ? (
-                              <span
-                                data-resize-handle="true"
-                                onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'start', mouseEvent)}
-                                className="absolute inset-x-3 top-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
-                              />
-                            ) : null}
-                            <div className="inline-flex rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                              {extractTimeValue(event.start, event.day)} – {extractTimeValue(event.end, event.day)}
-                            </div>
-                            <div className="mt-2 truncate text-sm font-semibold text-white">{event.project}</div>
-                            <div className="truncate text-xs text-slate-300">{event.activityLabel}</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-1">
-                              <div className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${syncPresentation.badgeClassName}`}>
-                                {syncPresentation.label}
+                          return (
+                            <div
+                              key={event.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-disabled={isLocked}
+                              data-event-block="true"
+                              onMouseDown={(mouseEvent) => handleEventMouseDown(event, mouseEvent)}
+                              onKeyDown={(keyboardEvent) => {
+                                if (keyboardEvent.key === 'Enter' || keyboardEvent.key === ' ') {
+                                  keyboardEvent.preventDefault();
+                                  setDraftEvent(null);
+                                  setSelectedEvent(event);
+                                }
+                              }}
+                              className={`absolute left-1.5 right-1.5 overflow-hidden rounded-2xl border px-2 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-primary/60 ${isLocked ? 'cursor-not-allowed opacity-85 shadow-sm' : 'shadow-[0_12px_24px_rgba(0,0,0,0.25)] hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]'} ${syncPresentation.blockClassName}`}
+                              style={{ top: position.top + 2, height: position.height }}
+                              title={isLocked ? 'Historico sem acesso atual ao projeto no Artia' : undefined}
+                            >
+                              {!isLocked ? (
+                                <span
+                                  data-resize-handle="true"
+                                  onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'start', mouseEvent)}
+                                  className="absolute inset-x-3 top-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
+                                />
+                              ) : null}
+                              <div className="inline-flex rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+                                {extractTimeValue(event.start, event.day)} - {extractTimeValue(event.end, event.day)}
                               </div>
-                              {isLocked ? (
-                                <div className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-50">
-                                  Sem acesso atual
+                              <div className="mt-2 truncate text-sm font-semibold text-white">{event.project}</div>
+                              <div className="truncate text-xs text-slate-300">{event.activityLabel}</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                <div className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${syncPresentation.badgeClassName}`}>
+                                  {syncPresentation.label}
                                 </div>
+                                {isLocked ? (
+                                  <div className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-50">
+                                    Sem acesso atual
+                                  </div>
+                                ) : null}
+                              </div>
+                              {!isLocked ? (
+                                <span
+                                  data-resize-handle="true"
+                                  onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'end', mouseEvent)}
+                                  className="absolute inset-x-3 bottom-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
+                                />
                               ) : null}
                             </div>
-                            {!isLocked ? (
-                              <span
-                                data-resize-handle="true"
-                                onMouseDown={(mouseEvent) => handleResizeMouseDown(event, 'end', mouseEvent)}
-                                className="absolute inset-x-3 bottom-1 h-2 rounded-full bg-white/20 opacity-70 transition hover:bg-white/35"
-                              />
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
       {isEventModalOpen ? (
         <Suspense fallback={<ModalLoadingFallback />}>
           <EventModal isOpen={isEventModalOpen} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
         </Suspense>
       ) : null}
+
       {isRemoteEntriesModalOpen ? (
         <Suspense fallback={<ModalLoadingFallback />}>
           <ArtiaRemoteEntriesModal
@@ -706,6 +825,7 @@ export default function CalendarView() {
           />
         </Suspense>
       ) : null}
-    </div>
+      </WorkspacePage>
+    </>
   );
 }

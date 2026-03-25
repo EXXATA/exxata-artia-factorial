@@ -61,13 +61,18 @@ export default function AuthCallbackPage() {
   }, [checkAuth, navigate]);
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4">
-      <div className="bg-light-panel dark:bg-dark-panel rounded-lg shadow-lg p-8 text-center max-w-md w-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-        <h1 className="text-xl font-semibold mb-2">Concluindo login Microsoft</h1>
-        <p className="text-sm text-light-muted dark:text-dark-muted">
-          Estamos validando sua sessao e carregando seu perfil.
-        </p>
+    <div className="auth-screen">
+      <div className="auth-shell">
+        <section className="auth-copy">
+          <h1>Concluindo autenticacao no workspace.</h1>
+          <p>Estamos validando sua sessao, o provisionamento e o perfil operacional antes de abrir o sistema.</p>
+        </section>
+
+        <section className="auth-panel text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <h2>Concluindo login Microsoft</h2>
+          <p className="auth-subtitle">Validando sua sessao e carregando seu perfil.</p>
+        </section>
       </div>
     </div>
   );

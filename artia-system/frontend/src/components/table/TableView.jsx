@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
+import WorkspacePage from '../layout/WorkspacePage';
 import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import TableDetailTable from './TableDetailTable';
@@ -56,11 +56,13 @@ export default function TableView() {
   const { data: projectsData } = useProjects();
 
   const activeQuery = isDetailedMode ? detailQuery : summaryQuery;
+
   useRegisterGlobalAction({
     id: `table:${startDate}:${endDate}:${projectFilter}:${activityFilter}:${isDetailedMode ? 'detail' : 'summary'}`,
     label: 'Atualizar tabela atual',
     run: activeQuery.refresh
   });
+
   const activeData = activeQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
@@ -90,7 +92,6 @@ export default function TableView() {
     return [...systemRows, ...buildRemoteOnlyRows(dailyDetails)].sort(sortRowsByDayAndStart);
   }, [dailyDetails, events]);
   const minutesByDay = useMemo(() => getEventMinutesByDay(events), [events]);
-
   useEffect(() => {
     if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
       setProjectFilter('ALL');
@@ -122,67 +123,54 @@ export default function TableView() {
     );
   }
 
-  return (
-    <div className="view-shell">
-      <section className="ui-toolbar">
-        <div className="ui-toolbar-row">
-          <div className="ui-toolbar-group">
-            <label className="ui-label">De</label>
-            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
-            <label className="ui-label">Ate</label>
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
-            <label className="ui-label">Projeto</label>
-            <select value={projectFilter} onChange={(event) => { setProjectFilter(event.target.value); setActivityFilter('ALL'); }} className="ui-input min-w-[220px]">
-              <option value="ALL">Todos os projetos</option>
-              {projectOptions.map((project) => (
-                <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
-              ))}
-            </select>
-            <label className="ui-label">Atividade</label>
-            <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="ui-input min-w-[220px]">
-              <option value="ALL">Todas as atividades</option>
-              {activityOptions.map((activity) => (
-                <option key={activity.key} value={activity.value}>{activity.label}</option>
-              ))}
-            </select>
-          </div>
+  const toolbar = (
+    <section className="ui-toolbar">
+      <div className="ui-toolbar-row">
+        <div className="ui-toolbar-group">
+          <label className="ui-label">De</label>
+          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
+          <label className="ui-label">Ate</label>
+          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
+          <label className="ui-label">Projeto</label>
+          <select value={projectFilter} onChange={(event) => { setProjectFilter(event.target.value); setActivityFilter('ALL'); }} className="ui-input min-w-[220px]">
+            <option value="ALL">Todos os projetos</option>
+            {projectOptions.map((project) => (
+              <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
+            ))}
+          </select>
+          <label className="ui-label">Atividade</label>
+          <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="ui-input min-w-[220px]">
+            <option value="ALL">Todas as atividades</option>
+            {activityOptions.map((activity) => (
+              <option key={activity.key} value={activity.value}>{activity.label}</option>
+            ))}
+          </select>
+        </div>
 
-          <button onClick={() => {
+        <button
+          onClick={() => {
             const todayIso = formatDateISO(new Date());
             const day = todayIso >= startDate && todayIso <= endDate ? todayIso : startDate;
             setSelectedEvent(null);
             setDraftEvent({ day, startTime: '08:00', endTime: '08:50' });
-          }} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark">
-            + Novo apontamento
-          </button>
-        </div>
+          }}
+          className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark"
+        >
+          + Novo apontamento
+        </button>
+      </div>
+    </section>
+  );
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <span className={`ui-chip ${isDetailedMode ? 'ui-chip-success' : 'ui-chip-accent'}`}>
-            {isDetailedMode ? 'Modo detalhado' : 'Modo agregado'}
-          </span>
-          <span>
-            {isDetailedMode
-              ? 'Intervalos de ate 7 dias usam a leitura detalhada com eventos e lancamentos remotos.'
-              : 'Periodos acima de 7 dias usam resumo diario para manter a resposta rapida.'}
-          </span>
+  return (
+    <WorkspacePage
+      toolbar={toolbar}
+    >
+      {activeQuery.isError ? (
+        <div className="ui-banner-danger text-sm">
+          {activeQuery.error?.message || 'Erro ao carregar a tabela do periodo.'}
         </div>
-      </section>
-
-      <WorkedHoursRangePanel
-        startDate={startDate}
-        endDate={endDate}
-        stats={activeData?.stats || null}
-        isLoading={activeQuery.isLoading && !activeData}
-        isFetching={activeQuery.isFetching}
-        onRefresh={activeQuery.refresh}
-        project={projectFilter !== 'ALL' ? projectFilter : undefined}
-        activity={activityFilter !== 'ALL' ? activityFilter : undefined}
-        title={isDetailedMode ? 'Conciliacao diaria da tabela' : 'Conciliacao diaria do periodo agregado'}
-        subtitle={isDetailedMode
-          ? 'Comparacao diaria aplicada ao mesmo intervalo filtrado da tabela detalhada'
-          : 'Comparacao diaria agregada para o mesmo periodo filtrado da tabela'}
-      />
+      ) : null}
 
       {isDetailedMode ? (
         <TableDetailTable
@@ -199,12 +187,6 @@ export default function TableView() {
         <TableSummaryTable dailyDetails={dailyDetails} />
       )}
 
-      <div className="text-sm text-slate-500 dark:text-slate-400">
-        {isDetailedMode
-          ? 'Clique em uma linha do sistema para editar ou em uma linha do Artia para consultar o lancamento remoto.'
-          : 'O detalhamento evento a evento fica disponivel apenas em intervalos de ate 7 dias.'}
-      </div>
-
       {isEventModalOpen ? (
         <Suspense fallback={<ModalLoadingFallback />}>
           <EventModal
@@ -218,6 +200,7 @@ export default function TableView() {
           />
         </Suspense>
       ) : null}
+
       {isRemoteEntriesModalOpen ? (
         <Suspense fallback={<ModalLoadingFallback />}>
           <ArtiaRemoteEntriesModal
@@ -229,6 +212,6 @@ export default function TableView() {
           />
         </Suspense>
       ) : null}
-    </div>
+    </WorkspacePage>
   );
 }

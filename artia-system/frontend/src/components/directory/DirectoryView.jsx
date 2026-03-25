@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import WorkspacePage from '../layout/WorkspacePage';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
@@ -24,7 +25,7 @@ export default function DirectoryView() {
   const [endDate, setEndDate] = useState(defaultRange.endDate);
   const [selectedProject, setSelectedProject] = useState(null);
   const hasSelectedProject = Boolean(selectedProject?.number);
-  
+
   const projectsQuery = useProjects();
   const { data: projectsData, isLoading } = projectsQuery;
   const comparisonQuery = useWorkedHoursComparison({
@@ -34,9 +35,10 @@ export default function DirectoryView() {
     enabled: Boolean(hasSelectedProject && startDate && endDate)
   });
   const { data: comparisonData } = comparisonQuery;
+
   useRegisterGlobalAction({
     id: `directory:${startDate}:${endDate}:${selectedProject?.number || 'catalog'}`,
-    label: 'Atualizar diretório e catálogo',
+    label: 'Atualizar diretorio e catalogo',
     run: async () => {
       await projectsQuery.refetch();
 
@@ -45,11 +47,12 @@ export default function DirectoryView() {
       }
     }
   });
+
   const projects = projectsData?.data || [];
   const projectSummaries = comparisonData?.projectSummaries || [];
   const activitySummaries = comparisonData?.activitySummaries || [];
 
-  const filteredProjects = projects.filter(project => {
+  const filteredProjects = projects.filter((project) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -75,14 +78,15 @@ export default function DirectoryView() {
     }
 
     return projectSummaries.find((summary) => (
-      String(summary.projectId || '') === String(selectedProject.id || '')
-      || String(summary.projectNumber || '') === String(selectedProject.number || '')
+      String(summary.projectId || '') === String(selectedProject.id || '') ||
+      String(summary.projectNumber || '') === String(selectedProject.number || '')
     )) || null;
   }, [projectSummaries, selectedProject]);
 
-  const selectedProjectFactorialHours = useMemo(() => {
-    return (selectedProjectSummary?.byDay || []).reduce((sum, item) => sum + Number(item.factorialHours || 0), 0);
-  }, [selectedProjectSummary]);
+  const selectedProjectFactorialHours = useMemo(
+    () => (selectedProjectSummary?.byDay || []).reduce((sum, item) => sum + Number(item.factorialHours || 0), 0),
+    [selectedProjectSummary]
+  );
 
   const selectedProjectActivities = useMemo(() => {
     if (!selectedProject) {
@@ -91,8 +95,8 @@ export default function DirectoryView() {
 
     const summaryByActivityKey = (activitySummaries || []).reduce((accumulator, item) => {
       if (
-        String(item.projectId || '') === String(selectedProject.id || '')
-        || String(item.projectNumber || '') === String(selectedProject.number || '')
+        String(item.projectId || '') === String(selectedProject.id || '') ||
+        String(item.projectNumber || '') === String(selectedProject.number || '')
       ) {
         accumulator[String(item.activityId || item.activityLabel || item.key)] = item;
       }
@@ -101,10 +105,10 @@ export default function DirectoryView() {
     }, {});
 
     const catalogActivities = (selectedProject.activities || []).map((activity) => {
-      const summary = summaryByActivityKey[String(activity.artiaId || activity.id || activity.label)]
-        || summaryByActivityKey[String(activity.id || activity.label)]
-        || summaryByActivityKey[String(activity.label)]
-        || null;
+      const summary = summaryByActivityKey[String(activity.artiaId || activity.id || activity.label)] ||
+        summaryByActivityKey[String(activity.id || activity.label)] ||
+        summaryByActivityKey[String(activity.label)] ||
+        null;
 
       return {
         id: activity.id,
@@ -122,8 +126,8 @@ export default function DirectoryView() {
     const catalogLabels = new Set(catalogActivities.map((activity) => String(activity.label).trim().toLowerCase()));
     const extraActivities = (activitySummaries || [])
       .filter((item) => (
-        String(item.projectId || '') === String(selectedProject.id || '')
-        || String(item.projectNumber || '') === String(selectedProject.number || '')
+        String(item.projectId || '') === String(selectedProject.id || '') ||
+        String(item.projectNumber || '') === String(selectedProject.number || '')
       ))
       .filter((item) => !catalogLabels.has(String(item.activityLabel || '').trim().toLowerCase()))
       .map((item) => ({
@@ -138,7 +142,9 @@ export default function DirectoryView() {
         artiaEntryCount: item.artiaEntryCount || 0
       }));
 
-    return [...catalogActivities, ...extraActivities].sort((left, right) => (right.artiaHours + right.systemHours) - (left.artiaHours + left.systemHours));
+    return [...catalogActivities, ...extraActivities].sort(
+      (left, right) => (right.artiaHours + right.systemHours) - (left.artiaHours + left.systemHours)
+    );
   }, [activitySummaries, selectedProject]);
 
   if (isLoading) {
@@ -149,157 +155,169 @@ export default function DirectoryView() {
     );
   }
 
-  return (
-    <div className="view-shell">
-      <div className="ui-toolbar">
-        <div className="ui-toolbar-row">
-          <div className="ui-toolbar-group">
+  const toolbar = (
+    <section className="ui-toolbar">
+      <div className="ui-toolbar-row">
+        <div className="ui-toolbar-group">
           <input
             type="text"
             placeholder="Buscar projeto..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="ui-input w-full max-w-md"
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="ui-input w-full min-w-[280px]"
           />
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="ui-input"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="ui-input"
-          />
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="ui-chip">Projetos no catálogo: {projects.length}</span>
-          <span className="ui-chip ui-chip-accent">
-            {hasSelectedProject ? `Resumo carregado: ${selectedProject.number}` : 'Selecione um projeto para carregar o resumo'}
-          </span>
+          <label className="ui-label">De</label>
+          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
+          <label className="ui-label">Ate</label>
+          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
         </div>
       </div>
-      </div>
+    </section>
+  );
 
-      <div className="flex-1 flex gap-4 overflow-hidden">
-        <div className="ui-surface w-1/3 p-4 overflow-y-auto">
-          <h3 className="ui-label mb-3 block">
-            Projetos ({filteredProjects.length})
-          </h3>
-          <div className="space-y-2">
-            {filteredProjects.map(project => (
-              <div
-                key={project.id}
-                onClick={() => setSelectedProject(project)}
-                className={`rounded-2xl border p-3 cursor-pointer transition-colors ${
-                  selectedProject?.id === project.id
-                    ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                    : 'border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-[#111827] dark:hover:bg-white/10'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-semibold text-slate-900 dark:text-white">{project.number}</div>
-                  {project.active === false && (
-                    <span className="ui-chip ui-chip-warning px-2 py-0.5 text-[10px]">
-                      Inativo
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
-                  {project.name}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                  <span className="ui-chip px-2 py-0.5">
-                    {project.activities?.length || 0} atividade(s)
-                  </span>
-                  {selectedProject?.id === project.id && comparisonQuery.isFetching ? (
-                    <span className="ui-chip ui-chip-accent px-2 py-0.5">
-                      Atualizando resumo
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+  return (
+    <WorkspacePage toolbar={toolbar}>
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)]">
+        <section className="ui-surface min-h-0 overflow-hidden p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="ui-title">Projetos</h3>
+            <span className="ui-chip">{filteredProjects.length}</span>
           </div>
-        </div>
 
-        <div className="ui-surface flex-1 p-4 overflow-y-auto">
+          <div className="mt-4 h-[calc(100%-48px)] overflow-y-auto pr-1">
+            <div className="space-y-2">
+              {filteredProjects.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  onClick={() => setSelectedProject(project)}
+                  className={`w-full rounded-2xl border p-3 text-left transition-colors ${
+                    selectedProject?.id === project.id
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-white/10 dark:bg-[#111827] dark:hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold text-slate-900 dark:text-white">{project.number}</div>
+                    {project.active === false ? (
+                      <span className="ui-chip ui-chip-warning px-2 py-0.5 text-[10px]">
+                        Inativo
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                    {project.name}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                    <span className="ui-chip px-2 py-0.5">
+                      {project.activities?.length || 0} atividade(s)
+                    </span>
+                    {selectedProject?.id === project.id && comparisonQuery.isFetching ? (
+                      <span className="ui-chip ui-chip-accent px-2 py-0.5">
+                        Atualizando resumo
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="ui-surface min-h-0 overflow-hidden p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="ui-title">Atividades</h3>
+            {selectedProject ? <span className="ui-chip ui-chip-accent">{selectedProject.number}</span> : null}
+          </div>
+
           {selectedProject ? (
-            <>
-              <h3 className="ui-label mb-3 block">
-                Atividades ({selectedProject.activities?.length || 0})
-              </h3>
+            <div className="mt-4 flex h-[calc(100%-48px)] flex-col gap-4 overflow-hidden">
               {comparisonQuery.isLoading && !comparisonData ? (
                 <div className="ui-empty-state mb-4">
                   Carregando resumo do projeto...
                 </div>
               ) : null}
-              <div className={`mb-3 rounded-2xl border px-3 py-2 text-sm ${selectedProject.active === false ? 'ui-banner-warning' : 'ui-banner-success'}`}>
-                {selectedProject.active === false ? 'Projeto inativo no catálogo sincronizado do Artia.' : 'Projeto ativo no catálogo sincronizado do Artia.'}
-              </div>
-              <div className="mb-4 grid gap-3 md:grid-cols-4">
-                <div className="ui-kpi-card ui-kpi-card-accent">
-                  <div className="ui-kpi-label">Factorial</div>
-                  <div className="ui-kpi-value">{formatHours(selectedProjectFactorialHours)}</div>
+
+              {comparisonQuery.isError ? (
+                <div className="ui-banner-danger mb-4 text-sm">
+                  {comparisonQuery.error?.message || 'Erro ao carregar o resumo do projeto selecionado.'}
                 </div>
-                <div className="ui-kpi-card">
-                  <div className="ui-kpi-label">Sistema</div>
-                  <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.systemHours || 0)}</div>
+              ) : null}
+
+              <div className="space-y-4">
+                <div className={`${selectedProject.active === false ? 'ui-banner-warning' : 'ui-banner-success'} text-sm`}>
+                  {selectedProject.active === false
+                    ? 'Projeto inativo no catalogo sincronizado do Artia.'
+                    : 'Projeto ativo no catalogo sincronizado do Artia.'}
                 </div>
-                <div className="ui-kpi-card">
-                  <div className="ui-kpi-label">Artia</div>
-                  <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.artiaHours || 0)}</div>
-                </div>
-                <div className="ui-kpi-card ui-kpi-card-violet">
-                  <div className="ui-kpi-label">Somente Artia</div>
-                  <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.remoteOnlyArtiaHours || 0)}</div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {selectedProjectActivities.map(activity => (
-                  <div
-                    key={activity.id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-[#111827]"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-slate-900 dark:text-white">{activity.label}</div>
-                      {activity.active === false && (
-                        <span className="ui-chip ui-chip-warning px-2 py-0.5 text-[10px]">
-                          Inativa
-                        </span>
-                      )}
-                    </div>
-                    {activity.artiaId && (
-                      <div className="text-sm text-primary mt-1">
-                        ID: {activity.artiaId}
-                      </div>
-                    )}
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="ui-chip px-2 py-0.5">
-                        Sistema {formatHours(activity.systemHours)} · {activity.systemEventCount} evento(s)
-                      </span>
-                      <span className="ui-chip ui-chip-success px-2 py-0.5">
-                        Artia {formatHours(activity.artiaHours)} · {activity.artiaEntryCount} lançamento(s)
-                      </span>
-                      {activity.remoteOnlyArtiaHours > 0 ? (
-                        <span className="ui-chip ui-chip-violet px-2 py-0.5">
-                          Só Artia {formatHours(activity.remoteOnlyArtiaHours)}
-                        </span>
-                      ) : null}
-                    </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="ui-kpi-card ui-kpi-card-accent">
+                    <div className="ui-kpi-label">Factorial</div>
+                    <div className="ui-kpi-value">{formatHours(selectedProjectFactorialHours)}</div>
                   </div>
-                ))}
+                  <div className="ui-kpi-card">
+                    <div className="ui-kpi-label">Sistema</div>
+                    <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.systemHours || 0)}</div>
+                  </div>
+                  <div className="ui-kpi-card">
+                    <div className="ui-kpi-label">Artia</div>
+                    <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.artiaHours || 0)}</div>
+                  </div>
+                  <div className="ui-kpi-card ui-kpi-card-violet">
+                    <div className="ui-kpi-label">So Artia</div>
+                    <div className="ui-kpi-value">{formatHours(selectedProjectSummary?.remoteOnlyArtiaHours || 0)}</div>
+                  </div>
+                </div>
               </div>
-            </>
+
+              <div className="min-h-0 overflow-y-auto pr-1">
+                <div className="space-y-2">
+                  {selectedProjectActivities.map((activity) => (
+                    <div
+                      key={activity.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-[#111827]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium text-slate-900 dark:text-white">{activity.label}</div>
+                        {activity.active === false ? (
+                          <span className="ui-chip ui-chip-warning px-2 py-0.5 text-[10px]">
+                            Inativa
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {activity.artiaId ? (
+                        <div className="mt-1 text-sm text-primary">
+                          ID: {activity.artiaId}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="ui-chip px-2 py-0.5">
+                          Sistema {formatHours(activity.systemHours)} - {activity.systemEventCount} evento(s)
+                        </span>
+                        <span className="ui-chip ui-chip-success px-2 py-0.5">
+                          Artia {formatHours(activity.artiaHours)} - {activity.artiaEntryCount} lancamento(s)
+                        </span>
+                        {activity.remoteOnlyArtiaHours > 0 ? (
+                          <span className="ui-chip ui-chip-violet px-2 py-0.5">
+                            So Artia {formatHours(activity.remoteOnlyArtiaHours)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="ui-empty-state flex h-full items-center justify-center">
-              Selecione um projeto para ver as atividades
+              Selecione um projeto para ver as atividades.
             </div>
           )}
-        </div>
+        </section>
       </div>
-    </div>
+    </WorkspacePage>
   );
 }

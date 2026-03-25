@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import WorkspacePage from '../layout/WorkspacePage';
 import { useProjects } from '../../hooks/useProjects';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
-import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import GanttWeeklyTable from './GanttWeeklyTable';
 import { addDays, getWeekDays, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
 import { formatWeekRangeLabel, formatWorkedTime } from '../../utils/eventViewUtils';
@@ -27,11 +27,13 @@ export default function GanttView() {
     project: projectFilter !== 'ALL' ? projectFilter : undefined
   });
   const { data: projectsData } = useProjects();
+
   useRegisterGlobalAction({
     id: `gantt:${startDate}:${endDate}:${projectFilter}`,
-    label: 'Atualizar visão Gantt',
+    label: 'Atualizar visao Gantt',
     run: weekQuery.refresh
   });
+
   const comparisonData = weekQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
@@ -44,7 +46,6 @@ export default function GanttView() {
   );
   const comparisonByDay = useMemo(() => buildComparisonByDay(comparisonData), [comparisonData]);
   const weeklyFactorialHours = useMemo(() => getWeeklyFactorialHours(comparisonData), [comparisonData]);
-
   const prefetchAdjacentWeek = (offsetDays) => {
     if (!weekQuery.userScopeKey || weekDays.length === 0) {
       return;
@@ -78,47 +79,49 @@ export default function GanttView() {
     );
   }
 
-  return (
-    <div className="view-shell">
-      <section className="ui-toolbar">
-        <div className="ui-toolbar-row">
-          <div className="ui-toolbar-group">
-            <button
-              onClick={() => setWeekStart((current) => addDays(current, -7))}
-              onMouseEnter={() => prefetchAdjacentWeek(-7)}
-              onFocus={() => prefetchAdjacentWeek(-7)}
-              disabled={weekQuery.isFetching}
-              className="app-action-button disabled:opacity-50"
-            >
-              Sem. anterior
-            </button>
-            <button onClick={() => setWeekStart(startOfWeekMonday(new Date()))} disabled={weekQuery.isFetching} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50">
-              Hoje
-            </button>
-            <button
-              onClick={() => setWeekStart((current) => addDays(current, 7))}
-              onMouseEnter={() => prefetchAdjacentWeek(7)}
-              onFocus={() => prefetchAdjacentWeek(7)}
-              disabled={weekQuery.isFetching}
-              className="app-action-button disabled:opacity-50"
-            >
-              Prox. semana
-            </button>
-          </div>
+  const toolbar = (
+    <section className="ui-toolbar">
+      <div className="ui-toolbar-row">
+        <div className="ui-toolbar-group">
+          <button
+            onClick={() => setWeekStart((current) => addDays(current, -7))}
+            onMouseEnter={() => prefetchAdjacentWeek(-7)}
+            onFocus={() => prefetchAdjacentWeek(-7)}
+            disabled={weekQuery.isFetching}
+            className="app-action-button disabled:opacity-50"
+          >
+            Sem. anterior
+          </button>
+          <button
+            onClick={() => setWeekStart(startOfWeekMonday(new Date()))}
+            disabled={weekQuery.isFetching}
+            className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50"
+          >
+            Hoje
+          </button>
+          <button
+            onClick={() => setWeekStart((current) => addDays(current, 7))}
+            onMouseEnter={() => prefetchAdjacentWeek(7)}
+            onFocus={() => prefetchAdjacentWeek(7)}
+            disabled={weekQuery.isFetching}
+            className="app-action-button disabled:opacity-50"
+          >
+            Prox. semana
+          </button>
+        </div>
 
-          <div className="ui-chip ui-chip-accent text-sm font-semibold">
+        <div className="ui-toolbar-group">
+          <span className="ui-chip ui-chip-accent text-sm font-semibold">
             {formatWeekRangeLabel(weekStart)}
-          </div>
+          </span>
 
-          <div className="ui-toolbar-group">
-            <label className="ui-label">Projeto</label>
-            <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="ui-input min-w-[240px]">
-              <option value="ALL">Todos os projetos</option>
-              {projectOptions.map((project) => (
-                <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
-              ))}
-            </select>
-          </div>
+          <label className="ui-label">Projeto</label>
+          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="ui-input min-w-[240px]">
+            <option value="ALL">Todos os projetos</option>
+            {projectOptions.map((project) => (
+              <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
+            ))}
+          </select>
 
           {weekQuery.isFetching ? (
             <div className="ui-chip ui-chip-accent">
@@ -127,32 +130,14 @@ export default function GanttView() {
             </div>
           ) : null}
         </div>
+      </div>
+    </section>
+  );
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <span>Mostra o total semanal por projeto com sistema e lancamentos somente Artia.</span>
-          <span className="ui-chip">
-            <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
-            Factorial {formatWorkedTime(Math.round(weeklyFactorialHours * 60))}
-          </span>
-          <span className="ui-chip ui-chip-success"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Sincronizado</span>
-          <span className="ui-chip ui-chip-warning"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Manual</span>
-          <span className="ui-chip"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" />Pendente</span>
-          <span className="ui-chip ui-chip-violet"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />Somente Artia</span>
-        </div>
-      </section>
-
-      <WorkedHoursRangePanel
-        startDate={startDate}
-        endDate={endDate}
-        stats={comparisonData?.stats || null}
-        isLoading={weekQuery.isLoading && !comparisonData}
-        isFetching={weekQuery.isFetching}
-        onRefresh={weekQuery.refresh}
-        project={projectFilter !== 'ALL' ? projectFilter : undefined}
-        title="Conciliacao diaria da semana Gantt"
-        subtitle="Base diaria para comparar horas do sistema com Artia e Factorial na semana corrente"
-      />
-
+  return (
+    <WorkspacePage
+      toolbar={toolbar}
+    >
       <GanttWeeklyTable
         comparisonByDay={comparisonByDay}
         rows={rows}
@@ -160,6 +145,6 @@ export default function GanttView() {
         weekDays={weekDays}
         weekFactorialMinutes={Math.round(weeklyFactorialHours * 60)}
       />
-    </div>
+    </WorkspacePage>
   );
 }

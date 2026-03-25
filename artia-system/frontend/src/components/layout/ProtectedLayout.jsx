@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { GlobalActionProvider } from '../../contexts/GlobalActionContext';
 import CalendarView from '../calendar/CalendarView';
-import Header from './Header';
+import WorkspaceShell from './WorkspaceShell';
 
 const GanttView = lazy(() => import('../gantt/GanttView'));
 const TableView = lazy(() => import('../table/TableView'));
@@ -23,8 +23,7 @@ function ViewLoadingFallback() {
 export default function ProtectedLayout() {
   return (
     <GlobalActionProvider>
-      <Header />
-      <main className="app-main">
+      <WorkspaceShell>
         <Suspense fallback={<ViewLoadingFallback />}>
           <Routes>
             <Route path="/" element={<CalendarView />} />
@@ -36,7 +35,7 @@ export default function ProtectedLayout() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </main>
+      </WorkspaceShell>
     </GlobalActionProvider>
   );
 }

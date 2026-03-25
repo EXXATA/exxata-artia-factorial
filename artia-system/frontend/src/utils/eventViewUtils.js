@@ -4,7 +4,7 @@ import { calculateDuration } from './timeUtils.js';
 export const CALENDAR_START_HOUR = 0;
 export const CALENDAR_END_HOUR = 24;
 export const SLOT_MINUTES = 30;
-export const ROW_HEIGHT = 44;
+export const ROW_HEIGHT = 28;
 export const CALENDAR_SNAP_MINUTES = 1;
 export const CALENDAR_MIN_EVENT_MINUTES = 1;
 export const CALENDAR_DEFAULT_EVENT_DURATION = 50;
@@ -16,6 +16,8 @@ const EMPTY_SYNC_BREAKDOWN = {
   pendingMinutes: 0,
   manualMinutes: 0
 };
+
+const MIN_EVENT_BLOCK_HEIGHT = 20;
 
 export function buildTimeOptions(stepMinutes = 1) {
   const options = [];
@@ -191,7 +193,7 @@ export function getEventPosition(event) {
 
   return {
     top: (minutesFromGridStart / SLOT_MINUTES) * ROW_HEIGHT,
-    height: Math.max((visibleDuration / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
+    height: Math.max((visibleDuration / SLOT_MINUTES) * ROW_HEIGHT - 4, MIN_EVENT_BLOCK_HEIGHT)
   };
 }
 
@@ -239,7 +241,7 @@ export function getClampedEventPosition(event, {
     isClampedStart: startMinutes < gridStartMinutes,
     isClampedEnd: endMinutes > gridEndMinutes,
     top: ((clampedStart - gridStartMinutes) / SLOT_MINUTES) * ROW_HEIGHT,
-    height: Math.max(((clampedEnd - clampedStart) / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
+    height: Math.max(((clampedEnd - clampedStart) / SLOT_MINUTES) * ROW_HEIGHT - 4, MIN_EVENT_BLOCK_HEIGHT)
   };
 }
 
@@ -273,7 +275,7 @@ export function getRangePosition(startMinutes, endMinutes) {
 
   return {
     top: ((safeStart - CALENDAR_GRID_START_MINUTES) / SLOT_MINUTES) * ROW_HEIGHT,
-    height: Math.max(((safeEnd - safeStart) / SLOT_MINUTES) * ROW_HEIGHT - 4, 28)
+    height: Math.max(((safeEnd - safeStart) / SLOT_MINUTES) * ROW_HEIGHT - 4, MIN_EVENT_BLOCK_HEIGHT)
   };
 }
 

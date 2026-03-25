@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArcElement, BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Tooltip } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import WorkspacePage from '../layout/WorkspacePage';
 import { useProjects } from '../../hooks/useProjects';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { useThemeStore } from '../../store/slices/uiSlice';
-import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import ChartsToolbar from './ChartsToolbar';
 import { addDays, formatDateISO, startOfWeekMonday } from '../../utils/dateUtils';
 import { formatWorkedTime } from '../../utils/eventViewUtils';
@@ -70,11 +70,13 @@ export default function ChartsView() {
     enabled: Boolean(startDate && endDate)
   });
   const { data: projectsData } = useProjects();
+
   useRegisterGlobalAction({
     id: `charts:${startDate}:${endDate}:${projectFilter}`,
-    label: 'Atualizar gráficos',
+    label: 'Atualizar graficos',
     run: comparisonQuery.refresh
   });
+
   const comparisonData = comparisonQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
@@ -93,6 +95,7 @@ export default function ChartsView() {
     () => timeline.reduce((sum, item) => sum + item.hours, 0),
     [timeline]
   );
+  const topProjects = useMemo(() => projectDistribution.slice(0, 5), [projectDistribution]);
 
   useEffect(() => {
     if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
@@ -126,40 +129,31 @@ export default function ChartsView() {
     }
   };
 
+  const toolbar = (
+    <ChartsToolbar
+      startDate={startDate}
+      endDate={endDate}
+      projectFilter={projectFilter}
+      projectOptions={projectOptions}
+      projectOptionLabel={formatProjectOptionLabel}
+      groupBy={groupBy}
+      source={source}
+      totalLabel={`${getSourceLabel(source)} ${formatWorkedTime(Math.round(totalSelectedSourceHours * 60))}`}
+      onStartDateChange={(event) => setStartDate(event.target.value)}
+      onEndDateChange={(event) => setEndDate(event.target.value)}
+      onProjectChange={(event) => setProjectFilter(event.target.value)}
+      onGroupByChange={(event) => setGroupBy(event.target.value)}
+      onSourceChange={(event) => setSource(event.target.value)}
+    />
+  );
+
   return (
-    <div className="view-shell">
-      <ChartsToolbar
-        startDate={startDate}
-        endDate={endDate}
-        projectFilter={projectFilter}
-        projectOptions={projectOptions}
-        projectOptionLabel={formatProjectOptionLabel}
-        groupBy={groupBy}
-        source={source}
-        totalLabel={`${getSourceLabel(source)} ${formatWorkedTime(Math.round(totalSelectedSourceHours * 60))}`}
-        onStartDateChange={(event) => setStartDate(event.target.value)}
-        onEndDateChange={(event) => setEndDate(event.target.value)}
-        onProjectChange={(event) => setProjectFilter(event.target.value)}
-        onGroupByChange={(event) => setGroupBy(event.target.value)}
-        onSourceChange={(event) => setSource(event.target.value)}
-      />
-
-      <WorkedHoursRangePanel
-        startDate={startDate}
-        endDate={endDate}
-        stats={comparisonData?.stats || null}
-        isLoading={comparisonQuery.isLoading && !comparisonData}
-        isError={comparisonQuery.isError}
-        error={comparisonQuery.error}
-        isFetching={comparisonQuery.isFetching}
-        onRefresh={comparisonQuery.refresh}
-        title="Conciliacao diaria dos graficos"
-        subtitle="Leitura diaria do mesmo periodo usado nas visualizacoes analiticas"
-      />
-
+    <WorkspacePage
+      toolbar={toolbar}
+    >
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[1.3fr_1fr]">
         <article className="ui-surface flex min-h-[360px] flex-col overflow-hidden p-5">
-          <h3 className="ui-title">Horas ao Longo do Tempo · {getSourceLabel(source)}</h3>
+          <h3 className="ui-title">Horas ao longo do tempo - {getSourceLabel(source)}</h3>
           <div className="mt-5 min-h-0 flex-1">
             {timeline.length === 0 ? (
               <div className="ui-empty-state flex h-full items-center justify-center">Sem dados no periodo selecionado.</div>
@@ -168,7 +162,7 @@ export default function ChartsView() {
                 data={{
                   labels: timeline.map((item) => item.label),
                   datasets: [{
-                    label: `Horas · ${getSourceLabel(source)}`,
+                    label: `Horas - ${getSourceLabel(source)}`,
                     data: timeline.map((item) => item.hours),
                     borderRadius: 10,
                     backgroundColor: 'rgba(78,161,255,0.72)',
@@ -189,7 +183,7 @@ export default function ChartsView() {
         </article>
 
         <article className="ui-surface flex min-h-[360px] flex-col overflow-hidden p-5">
-          <h3 className="ui-title">Projetos · {getSourceLabel(source)}</h3>
+          <h3 className="ui-title">Projetos - {getSourceLabel(source)}</h3>
           <div className="mt-5 min-h-0 flex-1">
             {projectDistribution.length === 0 ? (
               <div className="ui-empty-state flex h-full items-center justify-center">Sem dados no periodo selecionado.</div>
@@ -210,6 +204,49 @@ export default function ChartsView() {
           </div>
         </article>
       </div>
-    </div>
+
+      <section className="ui-surface p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="ui-title">Leitura ativa</h3>
+            <p className="ui-subtitle">
+              {groupBy === 'week'
+                ? 'A serie principal agrupa os dados por semanas corridas.'
+                : 'A serie principal agrupa os dados por mes para facilitar leitura executiva.'}
+            </p>
+          </div>
+          <span className="ui-chip ui-chip-accent">Fonte {getSourceLabel(source)}</span>
+        </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="ui-kpi-card">
+              <div className="ui-kpi-label">Pontos</div>
+              <div className="ui-kpi-value">{timeline.length}</div>
+            </div>
+            <div className="ui-kpi-card">
+              <div className="ui-kpi-label">Projetos</div>
+              <div className="ui-kpi-value">{projectDistribution.length}</div>
+            </div>
+            <div className="ui-kpi-card ui-kpi-card-accent">
+              <div className="ui-kpi-label">Total exibido</div>
+              <div className="ui-kpi-value">{formatWorkedTime(Math.round(totalSelectedSourceHours * 60))}</div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="ui-label">Projetos com mais horas</div>
+            {topProjects.length ? topProjects.map((item) => (
+              <div key={item.label} className="workspace-legend-item">
+                <span className="workspace-legend-label">{item.label}</span>
+                <strong>{formatWorkedTime(Math.round(item.hours * 60))}</strong>
+              </div>
+            )) : (
+              <div className="ui-empty-state py-5">Nenhum projeto com horas no periodo selecionado.</div>
+            )}
+          </div>
+        </div>
+      </section>
+    </WorkspacePage>
   );
 }

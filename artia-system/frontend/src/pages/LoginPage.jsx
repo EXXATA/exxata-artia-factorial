@@ -33,23 +33,38 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-light-panel dark:bg-dark-panel rounded-lg shadow-lg p-8">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <div className="w-3 h-3 rounded-full bg-primary shadow-[0_0_0_6px_rgba(78,161,255,0.15)]"></div>
-              <h1 className="text-2xl font-bold">
-                Apontamento de Horas
-                <span className="text-[#d51d07] ml-1">Artia</span>
-              </h1>
+    <div className="auth-screen">
+      <div className="auth-shell">
+        <section className="auth-copy">
+          <h1>Apontamento limpo, objetivo e pronto para operar.</h1>
+          <p>
+            O workspace foi redesenhado para colocar o calendario e a leitura operacional em primeiro plano.
+            Entre com sua conta corporativa para acessar o ambiente.
+          </p>
+
+          <div className="auth-highlights">
+            <div className="auth-highlight">
+              Menu lateral recolhido, conteudo principal dominante e contexto sempre sob demanda.
             </div>
-            <p className="text-sm text-light-muted dark:text-dark-muted">
-              Entre com sua conta corporativa Microsoft da Exxata.
-            </p>
+            <div className="auth-highlight">
+              Conciliacao, atalhos e apoio ficam fora da superficie principal para reduzir ruido visual.
+            </div>
+            <div className="auth-highlight">
+              Acesso permitido somente para contas Microsoft corporativas da Exxata.
+            </div>
+          </div>
+        </section>
+
+        <section className="auth-panel">
+          <div className="auth-brand">
+            <div className="auth-brand-mark" />
+            <div>
+              <h2>Apontamento de Horas Artia</h2>
+              <p className="auth-subtitle">Entre com sua conta corporativa Microsoft da Exxata.</p>
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="mt-8 space-y-4">
             <Button
               variant="primary"
               type="button"
@@ -60,13 +75,11 @@ export default function LoginPage() {
               {isLoading ? 'Redirecionando...' : 'Entrar com Microsoft'}
             </Button>
 
-            <div className="p-4 bg-light-panel2 dark:bg-dark-panel2 rounded-lg">
-              <p className="text-xs text-light-muted dark:text-dark-muted">
-                <strong>Acesso:</strong> apenas contas corporativas <code>@exxata.com.br</code> autenticadas via Microsoft.
-              </p>
+            <div className="auth-note">
+              <strong>Acesso:</strong> apenas contas corporativas <code>@exxata.com.br</code> autenticadas via Microsoft.
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

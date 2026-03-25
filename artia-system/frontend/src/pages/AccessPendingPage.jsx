@@ -9,15 +9,15 @@ function getBlockerContent(authBlocker) {
   if (authBlocker?.code === 'USER_PROFILE_RECONCILIATION_REQUIRED') {
     return {
       title: 'Cadastro precisa de reconciliacao',
-      description: 'Sua conta Microsoft foi autenticada, mas encontramos um perfil local com outro identificador. Precisamos alinhar esse cadastro antes de liberar o acesso.',
+      description: 'Sua conta Microsoft foi autenticada, mas existe um perfil local com outro identificador.',
       details: 'Esse ajuste normalmente depende de uma reconciliacao administrativa no Supabase.'
     };
   }
 
   return {
     title: 'Acesso pendente de provisionamento',
-    description: 'Sua conta Microsoft foi autenticada com sucesso, mas seu cadastro ainda nao esta pronto para usar o sistema.',
-    details: 'O acesso sera liberado assim que o vinculo com o Factorial estiver provisionado.'
+    description: 'Sua conta foi autenticada, mas o vinculo operacional ainda nao esta pronto para liberar o uso.',
+    details: 'O acesso sera liberado assim que o cadastro estiver provisionado com o Factorial.'
   };
 }
 
@@ -39,13 +39,13 @@ export default function AccessPendingPage() {
 
   if (status === 'loading' && !authBlocker) {
     return (
-      <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4">
-        <div className="bg-light-panel dark:bg-dark-panel rounded-lg shadow-lg p-8 text-center max-w-md w-full">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <h1 className="text-xl font-semibold mb-2">Validando acesso</h1>
-          <p className="text-sm text-light-muted dark:text-dark-muted">
-            Estamos verificando o status do seu provisionamento.
-          </p>
+      <div className="auth-screen">
+        <div className="auth-shell">
+          <section className="auth-panel max-w-xl mx-auto text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <h2>Validando acesso</h2>
+            <p className="auth-subtitle">Estamos verificando o status do seu provisionamento.</p>
+          </section>
         </div>
       </div>
     );
@@ -83,51 +83,53 @@ export default function AccessPendingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
-        <div className="bg-light-panel dark:bg-dark-panel rounded-lg shadow-lg p-8">
-          <div className="text-center mb-6">
-            <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 flex items-center justify-center mx-auto mb-4 text-2xl">
-              !
+    <div className="auth-screen">
+      <div className="auth-shell">
+        <section className="auth-copy">
+          <h1>O acesso ainda esta em preparacao.</h1>
+          <p>
+            A autenticacao funcionou, mas o sistema ainda aguarda o alinhamento completo do seu cadastro.
+            Quando o provisionamento terminar, voce entra no mesmo workspace redesenhado.
+          </p>
+        </section>
+
+        <section className="auth-panel">
+          <div className="auth-brand">
+            <div className="auth-brand-mark" />
+            <div>
+              <h2>{blockerContent.title}</h2>
+              <p className="auth-subtitle">{blockerContent.description}</p>
             </div>
-            <h1 className="text-2xl font-bold mb-2">{blockerContent.title}</h1>
-            <p className="text-sm text-light-muted dark:text-dark-muted">
-              {blockerContent.description}
-            </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="p-4 bg-light-panel2 dark:bg-dark-panel2 rounded-lg space-y-2">
-              <p className="text-sm text-slate-700 dark:text-slate-200">
-                {blockerContent.details}
-              </p>
-              {Array.isArray(authBlocker?.data?.missing) && authBlocker.data.missing.length > 0 && (
-                <p className="text-xs text-light-muted dark:text-dark-muted">
-                  Pendencias atuais: {authBlocker.data.missing.join(', ')}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="primary"
-                className="flex-1"
-                disabled={status === 'loading' || isRetrying || isSigningOut}
-                onClick={handleRetry}
-              >
-                {isRetrying || status === 'loading' ? 'Validando...' : 'Tentar novamente'}
-              </Button>
-              <Button
-                variant="secondary"
-                className="flex-1"
-                disabled={isRetrying || isSigningOut}
-                onClick={handleLogout}
-              >
-                {isSigningOut ? 'Saindo...' : 'Sair'}
-              </Button>
-            </div>
+          <div className="auth-note">
+            {blockerContent.details}
+            {Array.isArray(authBlocker?.data?.missing) && authBlocker.data.missing.length > 0 ? (
+              <div className="mt-2 text-xs">
+                Pendencias atuais: {authBlocker.data.missing.join(', ')}
+              </div>
+            ) : null}
           </div>
-        </div>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={status === 'loading' || isRetrying || isSigningOut}
+              onClick={handleRetry}
+            >
+              {isRetrying || status === 'loading' ? 'Validando...' : 'Tentar novamente'}
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              disabled={isRetrying || isSigningOut}
+              onClick={handleLogout}
+            >
+              {isSigningOut ? 'Saindo...' : 'Sair'}
+            </Button>
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useProjects } from '../hooks/useProjects';
-import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
-import { useRegisterGlobalAction } from '../hooks/useRegisterGlobalAction';
 import ComparisonFilters from '../components/comparison/ComparisonFilters';
 import ComparisonResultsTable from '../components/comparison/ComparisonResultsTable';
 import ComparisonSidePanel from '../components/comparison/ComparisonSidePanel';
 import ComparisonSummaryGrid from '../components/comparison/ComparisonSummaryGrid';
+import WorkspacePage from '../components/layout/WorkspacePage';
+import { useProjects } from '../hooks/useProjects';
+import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
+import { useRegisterGlobalAction } from '../hooks/useRegisterGlobalAction';
 import { normalizeProjectCatalogActivityOptions, normalizeProjectCatalogOptions } from '../utils/viewFilterOptions';
 
 function getDefaultRange() {
@@ -42,11 +43,13 @@ export default function WorkedHoursComparison() {
     activity: activityFilter !== 'ALL' ? activityFilter : undefined
   });
   const { data: projectsData } = useProjects();
+
   useRegisterGlobalAction({
     id: `comparison:${startDate}:${endDate}:${projectFilter}:${activityFilter}`,
-    label: 'Atualizar comparação',
+    label: 'Atualizar comparacao',
     run: comparisonQuery.refresh
   });
+
   const data = comparisonQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
@@ -100,33 +103,28 @@ export default function WorkedHoursComparison() {
     );
   }
 
+  const toolbar = (
+    <ComparisonFilters
+      startDate={startDate}
+      endDate={endDate}
+      projectFilter={projectFilter}
+      activityFilter={activityFilter}
+      projects={projectOptions}
+      availableActivities={activityOptions}
+      isFetching={comparisonQuery.isFetching}
+      onStartDateChange={(event) => setStartDate(event.target.value)}
+      onEndDateChange={(event) => setEndDate(event.target.value)}
+      onProjectChange={(event) => {
+        setProjectFilter(event.target.value);
+        setActivityFilter('ALL');
+      }}
+      onActivityChange={(event) => setActivityFilter(event.target.value)}
+      onRefresh={() => comparisonQuery.refresh()}
+    />
+  );
+
   return (
-    <div className="view-shell">
-      <div>
-        <h1 className="text-2xl font-bold mb-2 text-slate-900 dark:text-white">Comparacao de Horas</h1>
-        <p className="ui-muted">
-          A leitura longa usa o read-side agregado por usuario. O detalhamento completo fica nas visoes semanais.
-        </p>
-      </div>
-
-      <ComparisonFilters
-        startDate={startDate}
-        endDate={endDate}
-        projectFilter={projectFilter}
-        activityFilter={activityFilter}
-        projects={projectOptions}
-        availableActivities={activityOptions}
-        isFetching={comparisonQuery.isFetching}
-        onStartDateChange={(event) => setStartDate(event.target.value)}
-        onEndDateChange={(event) => setEndDate(event.target.value)}
-        onProjectChange={(event) => {
-          setProjectFilter(event.target.value);
-          setActivityFilter('ALL');
-        }}
-        onActivityChange={(event) => setActivityFilter(event.target.value)}
-        onRefresh={() => comparisonQuery.refresh()}
-      />
-
+    <WorkspacePage toolbar={toolbar}>
       {comparisonQuery.isError ? (
         <div className="ui-banner-danger text-sm">
           {comparisonQuery.error?.message || 'Erro ao carregar comparacao do periodo.'}
@@ -143,8 +141,8 @@ export default function WorkedHoursComparison() {
 
       <ComparisonSummaryGrid stats={stats} />
 
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
-        <div className="space-y-4">
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <div className="min-h-0 flex flex-col gap-4">
           <ComparisonResultsTable
             filter={filter}
             dailyDetails={dailyDetails}
@@ -161,6 +159,6 @@ export default function WorkedHoursComparison() {
           visibleActivities={visibleActivities}
         />
       </div>
-    </div>
+    </WorkspacePage>
   );
 }
