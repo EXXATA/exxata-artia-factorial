@@ -11,8 +11,22 @@ import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../util
 
 const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
+const EventModal = lazy(() => import('./EventModal'));
+const ArtiaRemoteEntriesModal = lazy(() => import('./ArtiaRemoteEntriesModal'));
+
 function formatHoursFromComparison(hours) {
   return formatWorkedTime(Math.round((Number(hours) || 0) * 60));
+}
+
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
+      <div className="ui-surface relative z-10 px-6 py-5">
+        Carregando detalhes...
+      </div>
+    </div>
+  );
 }
 
 export default function CalendarView() {
@@ -61,20 +75,16 @@ export default function CalendarView() {
 
   const getColumnElement = (dayIso) => dayColumnRefs.current[dayIso] || null;
 
-  useEffect(() => {
+  const prefetchAdjacentWeek = (offsetDays) => {
     if (!userScopeKey || weekDays.length === 0) {
       return;
     }
 
     void prefetchWeekViewData(queryClient, userScopeKey, {
-      startDate: formatDateISO(addDays(weekDays[0], -7)),
-      endDate: formatDateISO(addDays(weekDays[6], -7))
+      startDate: formatDateISO(addDays(weekDays[0], offsetDays)),
+      endDate: formatDateISO(addDays(weekDays[6], offsetDays))
     });
-    void prefetchWeekViewData(queryClient, userScopeKey, {
-      startDate: formatDateISO(addDays(weekDays[0], 7)),
-      endDate: formatDateISO(addDays(weekDays[6], 7))
-    });
-  }, [queryClient, userScopeKey, weekDays]);
+  };
 
   const getMinutesFromPointer = (dayIso, clientY, strategy = 'round') => {
     const column = getColumnElement(dayIso);
@@ -264,6 +274,9 @@ export default function CalendarView() {
     setWeekStart(startOfWeekMonday(new Date()));
   };
 
+  const isEventModalOpen = Boolean(selectedEvent || draftEvent);
+  const isRemoteEntriesModalOpen = selectedRemoteEntries.length > 0;
+
   const handleGridMouseDown = (dayIso, event) => {
     if (event.button !== 0) return;
     if (event.target.closest('[data-event-block="true"]') || event.target.closest('[data-resize-handle="true"]')) return;
@@ -383,13 +396,25 @@ export default function CalendarView() {
       <div className="ui-toolbar">
         <div className="ui-toolbar-row">
           <div className="ui-toolbar-group">
-          <button onClick={handlePrevWeek} disabled={isFetching} className="app-action-button disabled:opacity-50">
+          <button
+            onClick={handlePrevWeek}
+            onMouseEnter={() => prefetchAdjacentWeek(-7)}
+            onFocus={() => prefetchAdjacentWeek(-7)}
+            disabled={isFetching}
+            className="app-action-button disabled:opacity-50"
+          >
             Sem. anterior
           </button>
           <button onClick={handleToday} disabled={isFetching} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50">
             Hoje
           </button>
-          <button onClick={handleNextWeek} disabled={isFetching} className="app-action-button disabled:opacity-50">
+          <button
+            onClick={handleNextWeek}
+            onMouseEnter={() => prefetchAdjacentWeek(7)}
+            onFocus={() => prefetchAdjacentWeek(7)}
+            disabled={isFetching}
+            className="app-action-button disabled:opacity-50"
+          >
             Prox. semana
           </button>
           </div>
@@ -662,14 +687,22 @@ export default function CalendarView() {
         </div>
       </div>
 
-      <EventModal isOpen={Boolean(selectedEvent || draftEvent)} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
-      <ArtiaRemoteEntriesModal
-        isOpen={Boolean(selectedRemoteEntries.length)}
-        onClose={closeRemoteEntriesModal}
-        entries={selectedRemoteEntries}
-        title={remoteModalTitle}
-        subtitle={remoteModalSubtitle}
-      />
+      {isEventModalOpen ? (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <EventModal isOpen={isEventModalOpen} onClose={closeModal} event={selectedEvent} draft={draftEvent} />
+        </Suspense>
+      ) : null}
+      {isRemoteEntriesModalOpen ? (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ArtiaRemoteEntriesModal
+            isOpen={isRemoteEntriesModalOpen}
+            onClose={closeRemoteEntriesModal}
+            entries={selectedRemoteEntries}
+            title={remoteModalTitle}
+            subtitle={remoteModalSubtitle}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

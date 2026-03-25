@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useProjects } from '../hooks/useProjects';
 import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
 import { useRegisterGlobalAction } from '../hooks/useRegisterGlobalAction';
 import ComparisonFilters from '../components/comparison/ComparisonFilters';
 import ComparisonResultsTable from '../components/comparison/ComparisonResultsTable';
 import ComparisonSidePanel from '../components/comparison/ComparisonSidePanel';
 import ComparisonSummaryGrid from '../components/comparison/ComparisonSummaryGrid';
-import { normalizeAvailableActivityOptions, normalizeAvailableProjectOptions } from '../utils/viewFilterOptions';
+import { normalizeProjectCatalogActivityOptions, normalizeProjectCatalogOptions } from '../utils/viewFilterOptions';
 
 function getDefaultRange() {
   const endDate = new Date();
@@ -40,22 +41,21 @@ export default function WorkedHoursComparison() {
     project: projectFilter !== 'ALL' ? projectFilter : undefined,
     activity: activityFilter !== 'ALL' ? activityFilter : undefined
   });
+  const { data: projectsData } = useProjects();
   useRegisterGlobalAction({
     id: `comparison:${startDate}:${endDate}:${projectFilter}:${activityFilter}`,
     label: 'Atualizar comparação',
     run: comparisonQuery.refresh
   });
-  const allProjectsQuery = useWorkedHoursComparison({ startDate, endDate });
-
   const data = comparisonQuery.data || null;
-  const filterSourceData = allProjectsQuery.data || data;
+  const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeAvailableProjectOptions(filterSourceData?.availableProjects || []),
-    [filterSourceData]
+    () => normalizeProjectCatalogOptions(projectCatalog),
+    [projectCatalog]
   );
   const activityOptions = useMemo(
-    () => normalizeAvailableActivityOptions(filterSourceData?.availableActivities || [], projectOptions, projectFilter),
-    [filterSourceData, projectFilter, projectOptions]
+    () => normalizeProjectCatalogActivityOptions(projectCatalog, projectFilter),
+    [projectCatalog, projectFilter]
   );
   const stats = data?.stats || null;
   const dailyDetails = data?.dailyDetails || [];

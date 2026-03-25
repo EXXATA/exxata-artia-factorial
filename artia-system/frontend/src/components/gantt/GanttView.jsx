@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useProjects } from '../../hooks/useProjects';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
@@ -7,7 +8,7 @@ import GanttWeeklyTable from './GanttWeeklyTable';
 import { addDays, getWeekDays, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
 import { formatWeekRangeLabel, formatWorkedTime } from '../../utils/eventViewUtils';
 import { buildProjectWeeklyComparisonRows } from '../../utils/artiaSyncUtils';
-import { formatProjectOptionLabel, normalizeAvailableProjectOptions } from '../../utils/viewFilterOptions';
+import { formatProjectOptionLabel, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
 import { buildComparisonByDay, getWeeklyFactorialHours } from './ganttViewUtils';
 
 export default function GanttView() {
@@ -25,18 +26,17 @@ export default function GanttView() {
     endDate,
     project: projectFilter !== 'ALL' ? projectFilter : undefined
   });
+  const { data: projectsData } = useProjects();
   useRegisterGlobalAction({
     id: `gantt:${startDate}:${endDate}:${projectFilter}`,
     label: 'Atualizar visão Gantt',
     run: weekQuery.refresh
   });
-  const allProjectsWeekQuery = useWeekViewData({ startDate, endDate });
-
   const comparisonData = weekQuery.data || null;
-  const filterSourceData = allProjectsWeekQuery.data || comparisonData;
+  const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeAvailableProjectOptions(filterSourceData?.availableProjects || []),
-    [filterSourceData]
+    () => normalizeProjectCatalogOptions(projectCatalog),
+    [projectCatalog]
   );
   const rows = useMemo(
     () => buildProjectWeeklyComparisonRows(comparisonData?.projectSummaries || [], weekDayIsos),
@@ -45,22 +45,17 @@ export default function GanttView() {
   const comparisonByDay = useMemo(() => buildComparisonByDay(comparisonData), [comparisonData]);
   const weeklyFactorialHours = useMemo(() => getWeeklyFactorialHours(comparisonData), [comparisonData]);
 
-  useEffect(() => {
+  const prefetchAdjacentWeek = (offsetDays) => {
     if (!weekQuery.userScopeKey || weekDays.length === 0) {
       return;
     }
 
     void prefetchWeekViewData(queryClient, weekQuery.userScopeKey, {
-      startDate: formatDateISO(addDays(weekDays[0], -7)),
-      endDate: formatDateISO(addDays(weekDays[6], -7)),
+      startDate: formatDateISO(addDays(weekDays[0], offsetDays)),
+      endDate: formatDateISO(addDays(weekDays[6], offsetDays)),
       project: projectFilter !== 'ALL' ? projectFilter : undefined
     });
-    void prefetchWeekViewData(queryClient, weekQuery.userScopeKey, {
-      startDate: formatDateISO(addDays(weekDays[0], 7)),
-      endDate: formatDateISO(addDays(weekDays[6], 7)),
-      project: projectFilter !== 'ALL' ? projectFilter : undefined
-    });
-  }, [projectFilter, queryClient, weekDays, weekQuery.userScopeKey]);
+  };
 
   useEffect(() => {
     if (projectFilter === 'ALL') {
@@ -88,13 +83,25 @@ export default function GanttView() {
       <section className="ui-toolbar">
         <div className="ui-toolbar-row">
           <div className="ui-toolbar-group">
-            <button onClick={() => setWeekStart((current) => addDays(current, -7))} disabled={weekQuery.isFetching} className="app-action-button disabled:opacity-50">
+            <button
+              onClick={() => setWeekStart((current) => addDays(current, -7))}
+              onMouseEnter={() => prefetchAdjacentWeek(-7)}
+              onFocus={() => prefetchAdjacentWeek(-7)}
+              disabled={weekQuery.isFetching}
+              className="app-action-button disabled:opacity-50"
+            >
               Sem. anterior
             </button>
             <button onClick={() => setWeekStart(startOfWeekMonday(new Date()))} disabled={weekQuery.isFetching} className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50">
               Hoje
             </button>
-            <button onClick={() => setWeekStart((current) => addDays(current, 7))} disabled={weekQuery.isFetching} className="app-action-button disabled:opacity-50">
+            <button
+              onClick={() => setWeekStart((current) => addDays(current, 7))}
+              onMouseEnter={() => prefetchAdjacentWeek(7)}
+              onFocus={() => prefetchAdjacentWeek(7)}
+              disabled={weekQuery.isFetching}
+              className="app-action-button disabled:opacity-50"
+            >
               Prox. semana
             </button>
           </div>

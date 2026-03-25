@@ -23,41 +23,31 @@ export default function DirectoryView() {
   const [startDate, setStartDate] = useState(defaultRange.startDate);
   const [endDate, setEndDate] = useState(defaultRange.endDate);
   const [selectedProject, setSelectedProject] = useState(null);
+  const hasSelectedProject = Boolean(selectedProject?.number);
   
   const projectsQuery = useProjects();
   const { data: projectsData, isLoading } = projectsQuery;
   const comparisonQuery = useWorkedHoursComparison({
     startDate,
     endDate,
-    enabled: Boolean(startDate && endDate)
+    project: hasSelectedProject ? selectedProject.number : undefined,
+    enabled: Boolean(hasSelectedProject && startDate && endDate)
   });
   const { data: comparisonData } = comparisonQuery;
   useRegisterGlobalAction({
-    id: `directory:${startDate}:${endDate}`,
+    id: `directory:${startDate}:${endDate}:${selectedProject?.number || 'catalog'}`,
     label: 'Atualizar diretório e catálogo',
     run: async () => {
-      await Promise.all([
-        projectsQuery.refetch(),
-        comparisonQuery.refresh()
-      ]);
+      await projectsQuery.refetch();
+
+      if (hasSelectedProject) {
+        await comparisonQuery.refresh();
+      }
     }
   });
   const projects = projectsData?.data || [];
   const projectSummaries = comparisonData?.projectSummaries || [];
   const activitySummaries = comparisonData?.activitySummaries || [];
-
-  const projectSummariesByKey = useMemo(() => {
-    return projectSummaries.reduce((accumulator, summary) => {
-      if (summary.projectId) {
-        accumulator[`id:${summary.projectId}`] = summary;
-      }
-      if (summary.projectNumber) {
-        accumulator[`number:${summary.projectNumber}`] = summary;
-      }
-      accumulator[`key:${summary.projectKey}`] = summary;
-      return accumulator;
-    }, {});
-  }, [projectSummaries]);
 
   const filteredProjects = projects.filter(project => {
     if (!searchTerm) return true;
@@ -84,10 +74,11 @@ export default function DirectoryView() {
       return null;
     }
 
-    return projectSummariesByKey[`id:${selectedProject.id}`]
-      || projectSummariesByKey[`number:${selectedProject.number}`]
-      || null;
-  }, [projectSummariesByKey, selectedProject]);
+    return projectSummaries.find((summary) => (
+      String(summary.projectId || '') === String(selectedProject.id || '')
+      || String(summary.projectNumber || '') === String(selectedProject.number || '')
+    )) || null;
+  }, [projectSummaries, selectedProject]);
 
   const selectedProjectFactorialHours = useMemo(() => {
     return (selectedProjectSummary?.byDay || []).reduce((sum, item) => sum + Number(item.factorialHours || 0), 0);
@@ -185,7 +176,9 @@ export default function DirectoryView() {
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="ui-chip">Projetos no catálogo: {projects.length}</span>
-          <span className="ui-chip ui-chip-accent">Projetos com horas: {projectSummaries.length}</span>
+          <span className="ui-chip ui-chip-accent">
+            {hasSelectedProject ? `Resumo carregado: ${selectedProject.number}` : 'Selecione um projeto para carregar o resumo'}
+          </span>
         </div>
       </div>
       </div>
@@ -219,11 +212,13 @@ export default function DirectoryView() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                   <span className="ui-chip px-2 py-0.5">
-                    Sistema {formatHours(projectSummariesByKey[`id:${project.id}`]?.systemHours || projectSummariesByKey[`number:${project.number}`]?.systemHours || 0)}
+                    {project.activities?.length || 0} atividade(s)
                   </span>
-                  <span className="ui-chip ui-chip-success px-2 py-0.5">
-                    Artia {formatHours(projectSummariesByKey[`id:${project.id}`]?.artiaHours || projectSummariesByKey[`number:${project.number}`]?.artiaHours || 0)}
-                  </span>
+                  {selectedProject?.id === project.id && comparisonQuery.isFetching ? (
+                    <span className="ui-chip ui-chip-accent px-2 py-0.5">
+                      Atualizando resumo
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -236,6 +231,11 @@ export default function DirectoryView() {
               <h3 className="ui-label mb-3 block">
                 Atividades ({selectedProject.activities?.length || 0})
               </h3>
+              {comparisonQuery.isLoading && !comparisonData ? (
+                <div className="ui-empty-state mb-4">
+                  Carregando resumo do projeto...
+                </div>
+              ) : null}
               <div className={`mb-3 rounded-2xl border px-3 py-2 text-sm ${selectedProject.active === false ? 'ui-banner-warning' : 'ui-banner-success'}`}>
                 {selectedProject.active === false ? 'Projeto inativo no catálogo sincronizado do Artia.' : 'Projeto ativo no catálogo sincronizado do Artia.'}
               </div>

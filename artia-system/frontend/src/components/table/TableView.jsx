@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import EventModal from '../calendar/EventModal';
-import ArtiaRemoteEntriesModal from '../calendar/ArtiaRemoteEntriesModal';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
+import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import TableDetailTable from './TableDetailTable';
 import TableSummaryTable from './TableSummaryTable';
@@ -10,8 +9,22 @@ import { useRangeSummaryView } from '../../hooks/useRangeSummaryView';
 import { formatDateISO, startOfWeekMonday, addDays } from '../../utils/dateUtils';
 import { getEventMinutesByDay } from '../../utils/eventViewUtils';
 import { calculateDuration } from '../../utils/timeUtils';
-import { formatProjectOptionLabel, normalizeAvailableActivityOptions, normalizeAvailableProjectOptions } from '../../utils/viewFilterOptions';
+import { formatProjectOptionLabel, normalizeProjectCatalogActivityOptions, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
 import { buildRemoteOnlyRows, getInclusiveDaySpan, sortRowsByDayAndStart } from './tableViewUtils';
+
+const EventModal = lazy(() => import('../calendar/EventModal'));
+const ArtiaRemoteEntriesModal = lazy(() => import('../calendar/ArtiaRemoteEntriesModal'));
+
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
+      <div className="ui-surface relative z-10 px-6 py-5">
+        Carregando detalhes...
+      </div>
+    </div>
+  );
+}
 
 export default function TableView() {
   const initialWeekStart = startOfWeekMonday(new Date());
@@ -33,11 +46,6 @@ export default function TableView() {
     activity: activityFilter !== 'ALL' ? activityFilter : undefined,
     enabled: isDetailedMode
   });
-  const detailFilterSourceQuery = useWeekViewData({
-    startDate,
-    endDate,
-    enabled: isDetailedMode
-  });
   const summaryQuery = useRangeSummaryView({
     startDate,
     endDate,
@@ -45,11 +53,7 @@ export default function TableView() {
     activity: activityFilter !== 'ALL' ? activityFilter : undefined,
     enabled: !isDetailedMode
   });
-  const summaryFilterSourceQuery = useRangeSummaryView({
-    startDate,
-    endDate,
-    enabled: !isDetailedMode
-  });
+  const { data: projectsData } = useProjects();
 
   const activeQuery = isDetailedMode ? detailQuery : summaryQuery;
   useRegisterGlobalAction({
@@ -58,14 +62,14 @@ export default function TableView() {
     run: activeQuery.refresh
   });
   const activeData = activeQuery.data || null;
-  const filterSourceData = (isDetailedMode ? detailFilterSourceQuery.data : summaryFilterSourceQuery.data) || activeData;
+  const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeAvailableProjectOptions(filterSourceData?.availableProjects || []),
-    [filterSourceData]
+    () => normalizeProjectCatalogOptions(projectCatalog),
+    [projectCatalog]
   );
   const activityOptions = useMemo(
-    () => normalizeAvailableActivityOptions(filterSourceData?.availableActivities || [], projectOptions, projectFilter),
-    [filterSourceData, projectFilter, projectOptions]
+    () => normalizeProjectCatalogActivityOptions(projectCatalog, projectFilter),
+    [projectCatalog, projectFilter]
   );
   const dailyDetails = activeData?.dailyDetails || [];
   const dailyDetailsByDate = useMemo(
@@ -104,6 +108,9 @@ export default function TableView() {
     setSelectedEvent(null);
     setSelectedRemoteEntries([]);
   }, [isDetailedMode]);
+
+  const isEventModalOpen = Boolean(selectedEvent || draftEvent);
+  const isRemoteEntriesModalOpen = selectedRemoteEntries.length > 0;
 
   if (activeQuery.isLoading && !activeData) {
     return (
@@ -198,22 +205,30 @@ export default function TableView() {
           : 'O detalhamento evento a evento fica disponivel apenas em intervalos de ate 7 dias.'}
       </div>
 
-      <EventModal
-        isOpen={Boolean(selectedEvent || draftEvent)}
-        onClose={() => {
-          setSelectedEvent(null);
-          setDraftEvent(null);
-        }}
-        event={selectedEvent}
-        draft={draftEvent}
-      />
-      <ArtiaRemoteEntriesModal
-        isOpen={Boolean(selectedRemoteEntries.length)}
-        onClose={() => setSelectedRemoteEntries([])}
-        entries={selectedRemoteEntries}
-        title="Lancamento remoto do Artia"
-        subtitle="Visualizacao somente leitura do lancamento remoto encontrado via MySQL."
-      />
+      {isEventModalOpen ? (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <EventModal
+            isOpen={isEventModalOpen}
+            onClose={() => {
+              setSelectedEvent(null);
+              setDraftEvent(null);
+            }}
+            event={selectedEvent}
+            draft={draftEvent}
+          />
+        </Suspense>
+      ) : null}
+      {isRemoteEntriesModalOpen ? (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ArtiaRemoteEntriesModal
+            isOpen={isRemoteEntriesModalOpen}
+            onClose={() => setSelectedRemoteEntries([])}
+            entries={selectedRemoteEntries}
+            title="Lancamento remoto do Artia"
+            subtitle="Visualizacao somente leitura do lancamento remoto encontrado via MySQL."
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

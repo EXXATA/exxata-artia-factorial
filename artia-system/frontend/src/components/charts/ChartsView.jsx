@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArcElement, BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Tooltip } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import { useProjects } from '../../hooks/useProjects';
 import { useWorkedHoursComparison } from '../../hooks/useWorkedHoursComparison';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { useThemeStore } from '../../store/slices/uiSlice';
@@ -8,7 +9,7 @@ import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import ChartsToolbar from './ChartsToolbar';
 import { addDays, formatDateISO, startOfWeekMonday } from '../../utils/dateUtils';
 import { formatWorkedTime } from '../../utils/eventViewUtils';
-import { formatProjectOptionLabel, normalizeAvailableProjectOptions } from '../../utils/viewFilterOptions';
+import { formatProjectOptionLabel, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
 
@@ -68,18 +69,17 @@ export default function ChartsView() {
     project: projectFilter !== 'ALL' ? projectFilter : undefined,
     enabled: Boolean(startDate && endDate)
   });
+  const { data: projectsData } = useProjects();
   useRegisterGlobalAction({
     id: `charts:${startDate}:${endDate}:${projectFilter}`,
     label: 'Atualizar gráficos',
     run: comparisonQuery.refresh
   });
-  const allProjectsQuery = useWorkedHoursComparison({ startDate, endDate, enabled: Boolean(startDate && endDate) });
-
   const comparisonData = comparisonQuery.data || null;
-  const filterSourceData = allProjectsQuery.data || comparisonData;
+  const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeAvailableProjectOptions(filterSourceData?.availableProjects || []),
-    [filterSourceData]
+    () => normalizeProjectCatalogOptions(projectCatalog),
+    [projectCatalog]
   );
   const timeline = useMemo(
     () => buildTimelineSeries(comparisonData?.dailyDetails || [], groupBy, source),
