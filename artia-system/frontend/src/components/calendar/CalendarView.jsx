@@ -14,6 +14,10 @@ import {
   TIME_COLUMN_WIDTH
 } from './calendarViewport.js';
 import {
+  formatWeekInputValue,
+  getWeekStartFromInputValue
+} from './calendarWeekUtils.js';
+import {
   buildCalendarDayBuckets,
   combineDayAndTime,
   extractTimeValue,
@@ -80,6 +84,7 @@ export default function CalendarView() {
   const queryClient = useQueryClient();
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
+  const weekInputValue = useMemo(() => formatWeekInputValue(weekStart), [weekStart]);
   const startDate = formatDateISO(weekDays[0]);
   const endDate = formatDateISO(weekDays[6]);
 
@@ -397,6 +402,17 @@ export default function CalendarView() {
     setWeekStart(startOfWeekMonday(new Date()));
   };
 
+  const handleWeekInputChange = (event) => {
+    const nextWeekStart = getWeekStartFromInputValue(event.target.value);
+
+    if (!nextWeekStart) {
+      return;
+    }
+
+    setScrollAnchorKey((current) => current + 1);
+    setWeekStart(nextWeekStart);
+  };
+
   const handleGridMouseDown = (dayIso, event) => {
     if (event.button !== 0) return;
     if (event.target.closest('[data-event-block="true"]') || event.target.closest('[data-resize-handle="true"]')) return;
@@ -543,6 +559,13 @@ export default function CalendarView() {
           >
             Prox. semana
           </button>
+          <input
+            type="week"
+            aria-label="Selecionar semana"
+            className="workspace-topbar-weekpicker"
+            value={weekInputValue}
+            onChange={handleWeekInputChange}
+          />
         </div>
       </div>
     , topbarContextHost)
@@ -559,8 +582,8 @@ export default function CalendarView() {
                 className="calendar-board-header grid border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#111827]"
                 style={{ gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(7, minmax(0, 1fr))` }}
               >
-                <div className="calendar-board-corner border-r border-slate-200 px-2 py-2.5 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  Horarios
+                <div className="calendar-board-corner overflow-hidden border-r border-slate-200 px-2 py-2 text-center text-[10px] uppercase tracking-[0.12em] text-slate-500 dark:border-white/10 dark:text-slate-400">
+                  Horas
                 </div>
 
                 {weekDays.map((day, index) => {
@@ -727,14 +750,9 @@ export default function CalendarView() {
                             <div className="truncate text-xs text-slate-600 dark:text-slate-300 opacity-80">
                               {entry.activityLabel || entry.activity || 'Atividade Artia'}
                             </div>
-                            {entry.endEstimated ? (
-                              <div className="mt-1 inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-100">
-                                Horario estimado
-                              </div>
-                            ) : null}
                             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-200">
                               <span className="h-1.5 w-1.5 rounded-full bg-violet-500"></span>
-                              Lancado no Artia
+                              Artia
                             </div>
                           </button>
                         ))}

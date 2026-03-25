@@ -450,6 +450,18 @@ body {
     @apply flex shrink-0 items-center gap-2;
   }
 
+  .workspace-topbar-weekpicker {
+    @apply h-10 min-w-[156px] rounded-full px-3 text-sm outline-none transition;
+    border: 1px solid var(--color-border);
+    background: var(--color-panel-strong);
+    color: var(--color-text);
+  }
+
+  .workspace-topbar-weekpicker:focus {
+    border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+
   .workspace-topbar-copy {
     @apply flex min-w-0 items-center gap-4;
   }
@@ -515,6 +527,39 @@ body {
   .workspace-action-hint {
     @apply text-[11px];
     color: var(--color-muted-2);
+  }
+
+  .workspace-topbar-secondary {
+    @apply inline-flex;
+  }
+
+  .workspace-topbar-overflow {
+    @apply relative;
+  }
+
+  .workspace-topbar-overflow-trigger {
+    display: none;
+  }
+
+  .workspace-topbar-menu {
+    @apply absolute right-0 top-[calc(100%+10px)] z-50 grid min-w-[180px] gap-1 rounded-[20px] p-2;
+    border: 1px solid var(--color-border);
+    background: linear-gradient(180deg, var(--color-panel-strong), var(--color-panel));
+    box-shadow: var(--shadow-soft);
+  }
+
+  .workspace-topbar-menu-item {
+    @apply rounded-2xl px-3 py-2.5 text-left text-sm font-medium transition;
+    color: var(--color-text);
+    background: transparent;
+  }
+
+  .workspace-topbar-menu-item:hover {
+    background: var(--color-panel-muted);
+  }
+
+  .workspace-topbar-menu-item-danger {
+    color: var(--color-danger);
   }
 
   .workspace-mobile-trigger {
@@ -825,6 +870,7 @@ body {
 @media (max-width: 1024px) {
   :root {
     --workspace-shell-gutter: 16px;
+    --workspace-topbar-height: 124px;
   }
 
   .app-main {
@@ -832,8 +878,15 @@ body {
   }
 
   .workspace-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
     left: 16px;
     right: 16px;
+    height: auto;
+    min-height: var(--workspace-topbar-height);
+    padding: 14px 16px;
   }
 
   .workspace-mobile-trigger {
@@ -867,17 +920,49 @@ body {
   }
 
   .workspace-topbar-actions {
-    overflow-x: auto;
-    max-width: 48vw;
-    padding-bottom: 2px;
+    justify-self: end;
+    max-width: none;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .workspace-topbar-context {
     justify-content: flex-start;
+    grid-column: 1 / -1;
   }
 
   .workspace-topbar-user {
     display: none;
+  }
+
+  .workspace-topbar-main {
+    min-width: 0;
+  }
+
+  .workspace-topbar-copy {
+    gap: 12px;
+  }
+
+  .workspace-topbar-heading h1 {
+    font-size: 1.1rem;
+  }
+
+  .workspace-topbar-heading p {
+    font-size: 0.82rem;
+  }
+
+  .workspace-topbar-context-scroll {
+    width: 100%;
+    gap: 10px;
+    padding-bottom: 0;
+  }
+
+  .workspace-topbar-context-group {
+    gap: 8px;
+  }
+
+  .workspace-topbar-weekpicker {
+    min-width: 142px;
   }
 
   .auth-shell {
@@ -891,5 +976,19 @@ body {
 
   .auth-copy h1 {
     font-size: 2.4rem;
+  }
+}
+
+@media (max-width: 1280px) {
+  .workspace-topbar-user {
+    display: none;
+  }
+
+  .workspace-topbar-secondary {
+    display: none;
+  }
+
+  .workspace-topbar-overflow-trigger {
+    display: inline-flex;
   }
 }

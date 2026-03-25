@@ -6,6 +6,10 @@ import {
   getCalendarViewportHeight,
   getDefaultCalendarScrollTop
 } from '../src/components/calendar/calendarViewport.js';
+import {
+  formatWeekInputValue,
+  getWeekStartFromInputValue
+} from '../src/components/calendar/calendarWeekUtils.js';
 
 test('getWorkspaceViewByPath resolves the current workspace tab metadata', () => {
   assert.deepEqual(
@@ -113,5 +117,22 @@ test('buildCalendarDayHeaderMetrics keeps only the compact daily cues needed abo
         { label: 'Sem posicao', value: '1', tone: 'warning' }
       ]
     }
+  );
+});
+
+test('calendar week input helpers keep the temporal filter aligned to monday-based weeks', () => {
+  assert.equal(
+    formatWeekInputValue(new Date('2026-03-25T00:00:00')),
+    '2026-W13'
+  );
+
+  assert.equal(
+    getWeekStartFromInputValue('2026-W13')?.toISOString().slice(0, 10),
+    '2026-03-23'
+  );
+
+  assert.equal(
+    getWeekStartFromInputValue('invalid'),
+    null
   );
 });
