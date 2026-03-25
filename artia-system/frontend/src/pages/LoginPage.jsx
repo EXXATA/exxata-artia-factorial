@@ -8,14 +8,18 @@ import { microsoftAuthService } from '../services/auth/microsoftAuthService';
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { status, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!isAuthLoading && isAuthenticated) {
+    if (status === 'authenticated') {
       navigate('/', { replace: true });
     }
-  }, [isAuthenticated, isAuthLoading, navigate]);
+
+    if (status === 'pending') {
+      navigate('/access-pending', { replace: true });
+    }
+  }, [status, navigate]);
 
   const handleMicrosoftLogin = async () => {
     setIsLoading(true);

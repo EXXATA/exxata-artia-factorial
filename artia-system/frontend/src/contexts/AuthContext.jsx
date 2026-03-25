@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authService } from '../services/api/authService';
-import { isApiUnavailableError } from '../services/api/apiError';
+import { getAuthBlocker, isApiUnavailableError } from '../services/api/apiError';
 import { clearAuthState, getStoredUser } from '../services/auth/authStorage';
 import { microsoftAuthService } from '../services/auth/microsoftAuthService';
 import { supabase } from '../services/supabase/supabaseClient';
 
 const AuthContext = createContext(null);
+const initialUser = getStoredUser();
 
 async function getSessionAccessToken() {
   const {
@@ -16,84 +17,148 @@ async function getSessionAccessToken() {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(getStoredUser());
-  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getStoredUser()));
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(initialUser);
+  const [status, setStatus] = useState('loading');
+  const [authBlocker, setAuthBlocker] = useState(null);
   const lastResolvedTokenRef = useRef(null);
+  const isMountedRef = useRef(false);
+  const userRef = useRef(initialUser);
+  const statusRef = useRef('loading');
+  const authBlockerRef = useRef(null);
+
+  const commitState = ({ user: nextUser, status: nextStatus, authBlocker: nextAuthBlocker = null }) => {
+    userRef.current = nextUser;
+    statusRef.current = nextStatus;
+    authBlockerRef.current = nextAuthBlocker;
+
+    if (isMountedRef.current) {
+      setUser(nextUser);
+      setStatus(nextStatus);
+      setAuthBlocker(nextAuthBlocker);
+    }
+
+    return {
+      status: nextStatus,
+      user: nextUser,
+      blocker: nextAuthBlocker
+    };
+  };
+
+  const getCurrentSnapshot = () => ({
+    user: userRef.current,
+    status: statusRef.current,
+    authBlocker: authBlockerRef.current
+  });
+
+  const applyAuthenticatedState = (currentUser) => commitState({
+    user: currentUser,
+    status: 'authenticated',
+    authBlocker: null
+  });
+
+  const applyPendingState = (blocker) => {
+    clearAuthState();
+    authService.resetCurrentUserCache();
+    lastResolvedTokenRef.current = null;
+
+    return commitState({
+      user: null,
+      status: 'pending',
+      authBlocker: blocker
+    });
+  };
+
+  const clearSessionState = () => {
+    clearAuthState();
+    authService.resetCurrentUserCache();
+    lastResolvedTokenRef.current = null;
+
+    return commitState({
+      user: null,
+      status: 'anonymous',
+      authBlocker: null
+    });
+  };
+
+  const applyApiUnavailableFallback = (previousSnapshot = getCurrentSnapshot()) => {
+    const storedUser = getStoredUser();
+
+    if (storedUser) {
+      lastResolvedTokenRef.current = null;
+      return applyAuthenticatedState(storedUser);
+    }
+
+    if (previousSnapshot.status === 'pending' && previousSnapshot.authBlocker) {
+      return commitState({
+        user: null,
+        status: 'pending',
+        authBlocker: previousSnapshot.authBlocker
+      });
+    }
+
+    return commitState({
+      user: null,
+      status: 'anonymous',
+      authBlocker: null
+    });
+  };
+
+  const handleProfileResolutionError = async (error, { previousSnapshot = getCurrentSnapshot() } = {}) => {
+    const blocker = getAuthBlocker(error);
+
+    if (blocker) {
+      return applyPendingState(blocker);
+    }
+
+    if (isApiUnavailableError(error)) {
+      return applyApiUnavailableFallback(previousSnapshot);
+    }
+
+    await microsoftAuthService.logout();
+    return clearSessionState();
+  };
+
+  const syncCurrentUser = async ({ force = false } = {}) => {
+    const accessToken = await getSessionAccessToken();
+    const storedUser = getStoredUser();
+
+    if (!accessToken) {
+      return clearSessionState();
+    }
+
+    if (!force && storedUser && statusRef.current === 'authenticated' && lastResolvedTokenRef.current === accessToken) {
+      return applyAuthenticatedState(storedUser);
+    }
+
+    const previousSnapshot = getCurrentSnapshot();
+
+    try {
+      const currentUser = await authService.getCurrentUser({ force });
+
+      if (!currentUser) {
+        return clearSessionState();
+      }
+
+      lastResolvedTokenRef.current = accessToken;
+      return applyAuthenticatedState(currentUser);
+    } catch (error) {
+      return handleProfileResolutionError(error, { previousSnapshot });
+    }
+  };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const applyLocalState = (currentUser) => {
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser));
-      setIsLoading(false);
-    };
-
-    const clearSessionState = () => {
-      clearAuthState();
-      authService.resetCurrentUserCache();
-      lastResolvedTokenRef.current = null;
-      setUser(null);
-      setIsAuthenticated(false);
-      setIsLoading(false);
-    };
-
-    const handleProfileResolutionError = async (error) => {
-      if (!isMounted) {
-        return null;
-      }
-
-      if (isApiUnavailableError(error)) {
-        const storedUser = getStoredUser();
-        lastResolvedTokenRef.current = null;
-        setUser(storedUser);
-        setIsAuthenticated(Boolean(storedUser));
-        setIsLoading(false);
-        return null;
-      }
-
-      await microsoftAuthService.logout();
-      clearSessionState();
-      return null;
-    };
-
-    const syncCurrentUser = async ({ force = false } = {}) => {
-      const accessToken = await getSessionAccessToken();
-      const storedUser = getStoredUser();
-
-      if (!accessToken) {
-        clearSessionState();
-        return null;
-      }
-
-      if (!force && storedUser && lastResolvedTokenRef.current === accessToken) {
-        applyLocalState(storedUser);
-        return storedUser;
-      }
-
-      try {
-        const currentUser = await authService.getCurrentUser({ force });
-
-        if (!isMounted) {
-          return null;
-        }
-
-        lastResolvedTokenRef.current = accessToken;
-        applyLocalState(currentUser);
-        return currentUser;
-      } catch (error) {
-        return handleProfileResolutionError(error);
-      }
-    };
+    isMountedRef.current = true;
 
     const initializeAuth = async () => {
+      const previousSnapshot = getCurrentSnapshot();
+      commitState({
+        user: previousSnapshot.user,
+        status: 'loading',
+        authBlocker: previousSnapshot.authBlocker
+      });
+
       try {
         const restoredSession = await microsoftAuthService.restoreSession();
-
-        if (!isMounted) {
-          return;
-        }
 
         if (!restoredSession?.user) {
           clearSessionState();
@@ -101,9 +166,9 @@ export function AuthProvider({ children }) {
         }
 
         lastResolvedTokenRef.current = restoredSession.session?.accessToken || null;
-        applyLocalState(restoredSession.user);
+        applyAuthenticatedState(restoredSession.user);
       } catch (error) {
-        await handleProfileResolutionError(error);
+        await handleProfileResolutionError(error, { previousSnapshot });
       }
     };
 
@@ -112,10 +177,6 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!isMounted) {
-        return;
-      }
-
       if (!session) {
         clearSessionState();
         return;
@@ -123,11 +184,20 @@ export function AuthProvider({ children }) {
 
       const storedUser = getStoredUser();
       if (storedUser) {
-        setUser(storedUser);
-        setIsAuthenticated(true);
+        applyAuthenticatedState(storedUser);
+      } else if (statusRef.current === 'pending' && authBlockerRef.current) {
+        commitState({
+          user: null,
+          status: 'pending',
+          authBlocker: authBlockerRef.current
+        });
+      } else {
+        commitState({
+          user: null,
+          status: 'loading',
+          authBlocker: null
+        });
       }
-
-      setIsLoading(false);
 
       if (storedUser && lastResolvedTokenRef.current === session.access_token) {
         return;
@@ -137,66 +207,55 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const checkAuth = async () => {
-    setIsLoading(true);
+    const previousSnapshot = getCurrentSnapshot();
+    commitState({
+      user: previousSnapshot.user,
+      status: 'loading',
+      authBlocker: previousSnapshot.authBlocker
+    });
 
     try {
       const restoredSession = await microsoftAuthService.restoreSession({ forceUserSync: true });
       const currentUser = restoredSession?.user || null;
 
-      lastResolvedTokenRef.current = restoredSession?.session?.accessToken || null;
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser));
-      return currentUser;
-    } catch (error) {
-      if (isApiUnavailableError(error)) {
-        setIsLoading(false);
-        return null;
+      if (!currentUser) {
+        return clearSessionState();
       }
 
-      await microsoftAuthService.logout();
-      clearAuthState();
-      authService.resetCurrentUserCache();
-      lastResolvedTokenRef.current = null;
-      setUser(null);
-      setIsAuthenticated(false);
-      return null;
-    } finally {
-      setIsLoading(false);
+      lastResolvedTokenRef.current = restoredSession?.session?.accessToken || null;
+      return applyAuthenticatedState(currentUser);
+    } catch (error) {
+      return handleProfileResolutionError(error, { previousSnapshot });
     }
   };
 
-  const login = async (authData = null) => {
-    if (authData?.user) {
-      const accessToken = await getSessionAccessToken();
-      lastResolvedTokenRef.current = accessToken;
-      setUser(authData.user);
-      setIsAuthenticated(Boolean(authData.user));
-      return authData.user;
-    }
-
-    const currentUser = await authService.getCurrentUser();
-    const accessToken = await getSessionAccessToken();
-    lastResolvedTokenRef.current = accessToken;
-    setUser(currentUser);
-    setIsAuthenticated(Boolean(currentUser));
-    return currentUser;
-  };
+  const login = async () => checkAuth();
 
   const logout = async () => {
     await microsoftAuthService.logout();
-    lastResolvedTokenRef.current = null;
-    setUser(null);
-    setIsAuthenticated(false);
+    clearSessionState();
   };
 
+  const isAuthenticated = status === 'authenticated';
+  const isLoading = status === 'loading';
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, checkAuth }}>
+    <AuthContext.Provider value={{
+      user,
+      status,
+      authBlocker,
+      isAuthenticated,
+      isLoading,
+      login,
+      logout,
+      checkAuth
+    }}>
       {children}
     </AuthContext.Provider>
   );

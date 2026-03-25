@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMoveEvent } from '../../hooks/useEvents';
 import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
-import EventModal from './EventModal';
-import ArtiaRemoteEntriesModal from './ArtiaRemoteEntriesModal';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { addDays, getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
 import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getClampedEventPosition, getDefaultDraftFromSlot, getDraftFromRange, getEventMinuteRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';

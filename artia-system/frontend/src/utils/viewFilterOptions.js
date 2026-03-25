@@ -51,3 +51,27 @@ export function normalizeAvailableActivityOptions(availableActivities = [], proj
     }))
     .filter((activity) => selectedProject === 'ALL' || selectedProjectKeys.has(activity.projectKey)), (activity) => activity.key);
 }
+
+export function normalizeProjectCatalogOptions(projects = []) {
+  return normalizeAvailableProjectOptions(projects);
+}
+
+export function normalizeProjectCatalogActivityOptions(projects = [], selectedProject = 'ALL') {
+  const visibleProjects = (projects || []).filter((project) => (
+    selectedProject === 'ALL' || String(project.number) === String(selectedProject)
+  ));
+
+  return uniqBy(visibleProjects.flatMap((project, projectIndex) => (
+    (project.activities || []).map((activity, activityIndex) => ({
+      key: String(
+        activity.artiaId
+        || activity.id
+        || `${project.number || project.id || projectIndex}:${activity.label || activityIndex}`
+      ),
+      projectKey: String(project.id || project.key || project.number || `project-${projectIndex}`),
+      activityId: activity.artiaId ? String(activity.artiaId) : String(activity.id || ''),
+      label: String(activity.label || activity.activityLabel || 'Sem atividade'),
+      value: String(activity.artiaId || activity.id || activity.label || `activity-${projectIndex}-${activityIndex}`)
+    }))
+  )), (activity) => activity.value);
+}

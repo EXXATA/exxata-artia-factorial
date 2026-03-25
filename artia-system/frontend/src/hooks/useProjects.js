@@ -3,13 +3,13 @@ import { projectService } from '../services/api/projectService';
 import toast from 'react-hot-toast';
 import { useAuth } from './useAuth';
 
-export function useProjects() {
+export function useProjects({ enabled = true } = {}) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const userScopeKey = user?.id || user?.email || 'anonymous';
 
   return useQuery({
     queryKey: ['projects', userScopeKey],
-    enabled: isAuthenticated && !isLoading,
+    enabled: enabled && isAuthenticated && !isLoading,
     staleTime: 5 * 60 * 1000,
     queryFn: projectService.getAll
   });

@@ -2,29 +2,45 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
-import { getApiErrorMessage, isApiUnavailableError } from '../services/api/apiError';
+import { getApiErrorMessage, getAuthBlocker, isApiUnavailableError } from '../services/api/apiError';
 import { microsoftAuthService } from '../services/auth/microsoftAuthService';
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { checkAuth } = useAuth();
 
   useEffect(() => {
     let isMounted = true;
 
     const finishLogin = async () => {
       try {
-        const authData = await microsoftAuthService.completeSignIn();
-        const currentUser = await login(authData);
+        await microsoftAuthService.completeSignIn();
+        const result = await checkAuth();
 
         if (!isMounted) {
           return;
         }
 
-        toast.success(`Bem-vindo, ${currentUser?.name || currentUser?.email || 'colaborador'}!`);
-        navigate('/', { replace: true });
+        if (result.status === 'authenticated' && result.user) {
+          toast.success(`Bem-vindo, ${result.user.name || result.user.email || 'colaborador'}!`);
+          navigate('/', { replace: true });
+          return;
+        }
+
+        if (result.status === 'pending') {
+          navigate('/access-pending', { replace: true });
+          return;
+        }
+
+        toast.error('Nao foi possivel concluir o login Microsoft.');
+        navigate('/login', { replace: true });
       } catch (error) {
         if (!isMounted) {
+          return;
+        }
+
+        if (getAuthBlocker(error)) {
+          navigate('/access-pending', { replace: true });
           return;
         }
 
@@ -42,7 +58,7 @@ export default function AuthCallbackPage() {
     return () => {
       isMounted = false;
     };
-  }, [login, navigate]);
+  }, [checkAuth, navigate]);
 
   return (
     <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center p-4">

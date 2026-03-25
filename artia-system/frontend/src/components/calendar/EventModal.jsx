@@ -64,7 +64,7 @@ export default function EventModal({ isOpen, onClose, event, draft }) {
   const createMutation = useCreateEvent();
   const updateMutation = useUpdateEvent();
   const deleteMutation = useDeleteEvent();
-  const { data: projectsData, isLoading: projectsLoading } = useProjects();
+  const { data: projectsData, isLoading: projectsLoading } = useProjects({ enabled: isOpen });
   const projects = projectsData?.data || [];
 
   const normalizedProject = useMemo(() => normalizeProjectInput(formData.project), [formData.project]);

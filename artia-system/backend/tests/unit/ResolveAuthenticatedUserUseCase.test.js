@@ -100,7 +100,38 @@ test('ResolveAuthenticatedUserUseCase bloqueia usuario sem perfil provisionado',
 
   await assert.rejects(
     () => useCase.execute(buildAuthUser()),
-    (error) => error.code === 'USER_PROFILE_NOT_PROVISIONED'
+    (error) => error.code === 'AUTH_PROVISIONING_PENDING'
+  );
+});
+
+test('ResolveAuthenticatedUserUseCase retorna pendencia quando perfil nao tem vinculo com o Factorial', async () => {
+  const currentProfile = {
+    id: '7de97a87-9eb0-4cb4-aa00-dd54cccb1270',
+    email: 'andre.baptista@exxata.com.br',
+    name: 'Andre Baptista',
+    factorialEmployeeId: null,
+    artiaUserId: '244826'
+  };
+
+  const userRepository = {
+    async findById(id) {
+      assert.equal(id, currentProfile.id);
+      return currentProfile;
+    },
+    async ensureProfile(payload) {
+      assert.equal(payload.id, currentProfile.id);
+      assert.equal(payload.factorialEmployeeId, null);
+      return payload;
+    }
+  };
+
+  const useCase = new ResolveAuthenticatedUserUseCase(userRepository, buildPolicy());
+
+  await assert.rejects(
+    () => useCase.execute(buildAuthUser()),
+    (error) => error.code === 'AUTH_PROVISIONING_PENDING'
+      && Array.isArray(error.data?.missing)
+      && error.data.missing.includes('factorial_employee_id')
   );
 });
 

@@ -1,4 +1,8 @@
-import { createAuthInfrastructureError } from '../../../domain/errors/AuthError.js';
+import {
+  createAuthInfrastructureError,
+  createProvisioningPendingError,
+  createReconciliationRequiredError
+} from '../../../domain/errors/AuthError.js';
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -54,19 +58,30 @@ export class ResolveAuthenticatedUserUseCase {
         );
       }
 
-      const resolveError = existingProfile
-        ? new Error('Perfil local encontrado com outro identificador. Execute a reconciliacao antes do login.')
-        : new Error('Usuario autenticado sem perfil local provisionado. Execute a reconciliacao antes do login.');
+      if (existingProfile) {
+        throw createReconciliationRequiredError(
+          'Perfil local encontrado com outro identificador. Execute a reconciliacao antes do login.',
+          {
+            canRetry: false,
+            authUserId: authUser.id,
+            profileId: existingProfile.id
+          }
+        );
+      }
 
-      resolveError.code = existingProfile
-        ? 'USER_PROFILE_RECONCILIATION_REQUIRED'
-        : 'USER_PROFILE_NOT_PROVISIONED';
-
-      throw resolveError;
+      throw createProvisioningPendingError(
+        'Acesso pendente de provisionamento.',
+        {
+          missing: ['profile', 'factorial_employee_id'],
+          canRetry: true
+        }
+      );
     }
 
+    let syncedProfile;
+
     try {
-      return await this.userRepository.ensureProfile({
+      syncedProfile = await this.userRepository.ensureProfile({
         id: currentProfile.id,
         email,
         name: resolveDisplayName(authUser, currentProfile),
@@ -80,5 +95,17 @@ export class ResolveAuthenticatedUserUseCase {
         error
       );
     }
+
+    if (!syncedProfile.factorialEmployeeId) {
+      throw createProvisioningPendingError(
+        'Acesso pendente de provisionamento.',
+        {
+          missing: ['factorial_employee_id'],
+          canRetry: true
+        }
+      );
+    }
+
+    return syncedProfile;
   }
 }

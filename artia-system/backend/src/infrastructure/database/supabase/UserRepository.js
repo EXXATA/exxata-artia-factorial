@@ -42,14 +42,13 @@ export class UserRepository {
     return (data || []).map((row) => this.toDomain(row));
   }
 
-  async create({ id, email, name, passwordHash = null, factorialEmployeeId, artiaUserId }) {
+  async create({ id, email, name, factorialEmployeeId, artiaUserId }) {
     const { data, error } = await supabase
       .from('users')
       .insert({
         id,
         email,
         name,
-        password_hash: passwordHash,
         factorial_employee_id: factorialEmployeeId,
         artia_user_id: artiaUserId
       })
@@ -86,21 +85,6 @@ export class UserRepository {
 
     if (error) throw error;
     return true;
-  }
-
-  async updatePassword(userId, passwordHash) {
-    const { data, error } = await supabase
-      .from('users')
-      .update({
-        password_hash: passwordHash,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return this.toDomain(data);
   }
 
   async updateIdentity(userId, updates = {}) {
@@ -160,7 +144,6 @@ export class UserRepository {
       id: row.id,
       email: row.email,
       name: row.name,
-      passwordHash: row.password_hash || null,
       factorialEmployeeId: row.factorial_employee_id,
       artiaUserId: row.artia_user_id,
       createdAt: new Date(row.created_at),

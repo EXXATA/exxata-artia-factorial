@@ -1,8 +1,7 @@
 import {
   assertServiceRoleConfigured,
   getSupabaseClient,
-  supabaseAdmin,
-  supabaseAuth
+  supabaseAdmin
 } from '../database/supabase/supabaseClient.js';
 import {
   createAuthInfrastructureError,
@@ -49,29 +48,7 @@ export class SupabaseAuthService {
     return supabaseAdmin;
   }
 
-  async signInWithPassword(email, password) {
-    const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      throw new Error(normalizeAuthErrorMessage(error));
-    }
-
-    return data;
-  }
-
-  async refreshSession(refreshToken) {
-    const { data, error } = await supabaseAuth.auth.refreshSession({
-      refresh_token: refreshToken
-    });
-
-    if (error) {
-      throw new Error(normalizeAuthErrorMessage(error));
-    }
-
-    return data;
-  }
-
-  async createUser({ id, email, password, passwordHash, name }) {
+  async createUser({ id, email, password, name }) {
     const admin = this.ensureAdminClient();
     const payload = {
       email,
@@ -86,11 +63,7 @@ export class SupabaseAuthService {
       payload.id = id;
     }
 
-    if (passwordHash) {
-      payload.password_hash = passwordHash;
-    } else {
-      payload.password = password;
-    }
+    payload.password = password;
 
     const { data, error } = await admin.auth.admin.createUser(payload);
 
@@ -100,22 +73,6 @@ export class SupabaseAuthService {
 
     return data.user;
   }
-
-  async getUserById(userId) {
-    const admin = this.ensureAdminClient();
-    const { data, error } = await admin.auth.admin.getUserById(userId);
-
-    if (error) {
-      if (error.status === 404) {
-        return null;
-      }
-
-      throw new Error(normalizeAuthErrorMessage(error));
-    }
-
-    return data.user;
-  }
-
   async listUsersPage({ page = 1, perPage = 1000 } = {}) {
     const admin = this.ensureAdminClient();
     const { data, error } = await admin.auth.admin.listUsers({

@@ -1,148 +1,117 @@
-# Migração para Supabase
+# Supabase e autenticacao Microsoft
 
-Este projeto foi migrado de MongoDB para Supabase (PostgreSQL).
+Este backend usa Supabase para banco PostgreSQL e para autenticacao. O unico fluxo oficial de acesso do produto e Microsoft corporativo via Supabase Auth.
 
-## Configuração
+## O que configurar
 
-### 1. Criar projeto no Supabase
+### Variaveis de ambiente
 
-1. Acesse [supabase.com](https://supabase.com)
-2. Crie um novo projeto
-3. Copie as credenciais:
-   - `SUPABASE_URL`: URL do projeto
-   - `SUPABASE_ANON_KEY`: Chave pública (anon key)
-   - `SUPABASE_SERVICE_ROLE_KEY`: Chave de serviço (opcional, para operações admin)
+Copie `backend/.env.example` para `backend/.env` e preencha:
 
-### 2. Configurar variáveis de ambiente
-
-Copie `.env.example` para `.env` e preencha:
-
-```bash
-SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_ANON_KEY=sua-chave-anon
-SUPABASE_SERVICE_ROLE_KEY=sua-chave-service-role
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+MICROSOFT_ALLOWED_DOMAIN=exxata.com.br
+MICROSOFT_ALLOWED_TENANT_ID=
 ```
 
-### 3. Executar migrations
+`SUPABASE_SERVICE_ROLE_KEY` e obrigatoria para reconciliacao de usuarios e outras operacoes administrativas.
 
-As migrations SQL estão em `supabase/migrations/`. Execute-as na ordem:
+### Provider Microsoft/Azure no Supabase
 
-1. `20260306000001_create_projects_table.sql`
-2. `20260306000002_create_activities_table.sql`
-3. `20260306000003_create_events_table.sql`
+1. Habilite o provider Microsoft no dashboard do Supabase Auth.
+2. Configure a aplicacao Azure com os redirect URIs do frontend.
+3. Garanta que o callback do app aponte para `/auth/callback`.
 
-**Opção 1: Via Supabase Dashboard**
-- Acesse SQL Editor no dashboard
-- Cole e execute cada migration
+Exemplo local:
 
-**Opção 2: Via Supabase CLI**
+```text
+http://localhost:5173/auth/callback
+```
+
+## Migrations
+
+As migrations SQL ficam em `backend/supabase/migrations`.
+
+Para aplicar:
+
 ```bash
-# Instalar CLI
-npm install -g supabase
-
-# Login
-supabase login
-
-# Link ao projeto
-supabase link --project-ref seu-projeto-ref
-
-# Executar migrations
 supabase db push
 ```
 
-### 4. Instalar dependências
+A migration `20260324190000_auth_pending_and_cleanup.sql` faz tres ajustes importantes:
 
-```bash
-npm install
+- torna `public.users.artia_user_id` anulavel
+- remove a coluna legada `password_hash`
+- atualiza o trigger `handle_auth_user_profile` para reconciliar primeiro por email
+
+## Contrato de autenticacao
+
+O frontend autentica no Supabase e depois consulta:
+
+```http
+GET /api/v1/auth/me
+Authorization: Bearer <supabase-access-token>
 ```
 
-### 5. Iniciar servidor
+O backend valida:
 
-```bash
-npm run dev
+- sessao Supabase
+- provider Microsoft/Azure
+- dominio corporativo permitido
+- tenant permitido, quando configurado
+- estado de provisionamento do perfil local
+
+## Respostas de bloqueio
+
+### `403 AUTH_PROVISIONING_PENDING`
+
+Retornada quando o usuario autenticado ainda nao possui provisionamento funcional suficiente para usar o app. Hoje o requisito minimo e `factorialEmployeeId`.
+
+Payload esperado:
+
+```json
+{
+  "success": false,
+  "code": "AUTH_PROVISIONING_PENDING",
+  "message": "Acesso pendente de provisionamento.",
+  "data": {
+    "missing": ["factorial_employee_id"],
+    "canRetry": true
+  }
+}
 ```
 
-## Estrutura do Banco
+### `403 USER_PROFILE_RECONCILIATION_REQUIRED`
 
-### Tabela `projects`
-- `id` (UUID, PK)
-- `project_id` (TEXT, UNIQUE)
-- `number` (TEXT, UNIQUE)
-- `name` (TEXT)
-- `created_at`, `updated_at`
+Retornada quando existe um perfil local encontrado por email, mas com `id` diferente do `auth.user.id`. Esse caso deve ser tratado por reconciliacao controlada, sem reescrever IDs historicos automaticamente.
 
-### Tabela `activities`
-- `id` (UUID, PK)
-- `activity_id` (TEXT, UNIQUE)
-- `project_id` (TEXT, FK → projects)
-- `label` (TEXT)
-- `artia_id` (TEXT, nullable)
-- `created_at`, `updated_at`
+## Reconciliacao de usuarios
 
-### Tabela `events`
-- `id` (UUID, PK)
-- `event_id` (TEXT, UNIQUE)
-- `user_id` (TEXT)
-- `start_time`, `end_time` (TIMESTAMPTZ)
-- `day` (DATE)
-- `project` (TEXT)
-- `activity_id`, `activity_label` (TEXT)
-- `notes` (TEXT)
-- `artia_launched` (BOOLEAN)
-- `workplace` (TEXT, nullable)
-- `created_at`, `updated_at`
+Use o script abaixo primeiro em `dry-run`:
 
-## Row Level Security (RLS)
+```bash
+npm run reconcile:auth-users
+```
 
-As tabelas têm RLS habilitado:
+Para provisionar apenas os usuarios sem `auth.user`, rode:
 
-- **projects** e **activities**: Todos os usuários autenticados podem ler/escrever
-- **events**: Usuários só podem acessar seus próprios eventos (`user_id = auth.uid()`)
+```bash
+npm run reconcile:auth-users -- --apply
+```
 
-## Autenticação
+O relatorio informa:
 
-O sistema usa JWT próprio no backend. O Supabase é usado apenas como banco de dados PostgreSQL.
+- `aligned`
+- `missingAuthUser`
+- `conflictingIds`
+- `skipped`
+- `provisioned`
 
-Para integrar autenticação Supabase (opcional):
-1. Habilite providers no dashboard Supabase
-2. Use `supabase.auth.signIn()` no frontend
-3. Passe o token JWT do Supabase nas requisições
-4. Valide com `getSupabaseClient(accessToken)` no backend
+## Observacoes importantes
 
-## Diferenças vs MongoDB
-
-| Aspecto | MongoDB | Supabase |
-|---------|---------|----------|
-| Tipo | NoSQL (documentos) | SQL (relacional) |
-| Schema | Flexível | Rígido (migrations) |
-| Relacionamentos | Embedded/referências | Foreign keys |
-| Queries | Agregações | SQL/PostgREST |
-| RLS | Manual | Nativo (políticas) |
-| Conexão | Stateful | Stateless (HTTP) |
-
-## Vantagens do Supabase
-
-- ✅ RLS nativo para segurança multi-tenant
-- ✅ Sem necessidade de gerenciar conexões
-- ✅ Ideal para serverless (Vercel)
-- ✅ Dashboard visual para dados
-- ✅ Backup automático
-- ✅ Realtime subscriptions (opcional)
-- ✅ Storage de arquivos integrado
-- ✅ Edge Functions (opcional)
-
-## Troubleshooting
-
-### Erro: "Missing Supabase environment variables"
-- Verifique se `.env` tem `SUPABASE_URL` e `SUPABASE_ANON_KEY`
-
-### Erro: "relation does not exist"
-- Execute as migrations SQL no Supabase
-
-### Erro: "new row violates row-level security policy"
-- Verifique se o usuário está autenticado
-- Confirme que `user_id` corresponde ao `auth.uid()`
-
-### Performance lenta em queries
-- Verifique se os índices foram criados (migrations)
-- Use `.explain()` no SQL Editor para analisar queries
+- O backend nao usa JWT proprio.
+- Login/cadastro por senha nao faz mais parte do runtime oficial.
+- `artiaUserId` nao bloqueia login; ele e tratado como enriquecimento operacional.
+- A tela `/access-pending` no frontend segura usuarios autenticados no Microsoft/Supabase, mas ainda nao liberados para as rotas privadas.

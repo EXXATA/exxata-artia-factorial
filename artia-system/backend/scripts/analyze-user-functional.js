@@ -67,8 +67,7 @@ async function main() {
       email: user.email,
       name: user.name,
       factorialEmployeeId: user.factorialEmployeeId,
-      artiaUserId: user.artiaUserId,
-      hasPassword: Boolean(user.passwordHash)
+      artiaUserId: user.artiaUserId
     },
     range,
     projectCatalog: {

@@ -2,7 +2,6 @@ export class User {
   constructor({
     id,
     email,
-    passwordHash = null,
     name,
     factorialEmployeeId = null,
     artiaUserId = null,
@@ -11,7 +10,6 @@ export class User {
   }) {
     this.id = id;
     this.email = email;
-    this.passwordHash = passwordHash;
     this.name = name;
     this.factorialEmployeeId = factorialEmployeeId;
     this.artiaUserId = artiaUserId;

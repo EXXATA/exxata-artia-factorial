@@ -1,9 +1,21 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useThemeStore } from '../../store/slices/uiSlice';
 import { useAuth } from '../../hooks/useAuth';
 import { useGlobalAction } from '../../contexts/GlobalActionContext';
-import DataActionsModal from '../import/DataActionsModal';
+
+const DataActionsModal = lazy(() => import('../import/DataActionsModal'));
+
+function ModalLoadingFallback() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
+      <div className="ui-surface relative z-10 px-6 py-5">
+        Carregando ferramentas...
+      </div>
+    </div>
+  );
+}
 
 export default function Header() {
   const navigate = useNavigate();
@@ -160,10 +172,14 @@ export default function Header() {
           })}
         </nav>
 
-        <DataActionsModal
-          isOpen={isDataActionsOpen}
-          onClose={() => setIsDataActionsOpen(false)}
-        />
+        {isDataActionsOpen ? (
+          <Suspense fallback={<ModalLoadingFallback />}>
+            <DataActionsModal
+              isOpen={isDataActionsOpen}
+              onClose={() => setIsDataActionsOpen(false)}
+            />
+          </Suspense>
+        ) : null}
       </div>
     </header>
   );

@@ -1,9 +1,10 @@
 export class AuthError extends Error {
-  constructor(message, { code = 'AUTH_ERROR', statusCode = 400, cause = null } = {}) {
+  constructor(message, { code = 'AUTH_ERROR', statusCode = 400, cause = null, data = undefined } = {}) {
     super(message);
     this.name = 'AuthError';
     this.code = code;
     this.statusCode = statusCode;
+    this.data = data;
 
     if (cause) {
       this.cause = cause;
@@ -32,6 +33,28 @@ export function createAuthInfrastructureError(
     code,
     statusCode: 503,
     cause
+  });
+}
+
+export function createProvisioningPendingError(
+  message = 'Acesso pendente de provisionamento.',
+  data = { missing: ['factorial_employee_id'], canRetry: true }
+) {
+  return createAuthError(message, {
+    code: 'AUTH_PROVISIONING_PENDING',
+    statusCode: 403,
+    data
+  });
+}
+
+export function createReconciliationRequiredError(
+  message = 'Perfil local encontrado com outro identificador. Execute a reconciliacao antes do login.',
+  data = { canRetry: false }
+) {
+  return createAuthError(message, {
+    code: 'USER_PROFILE_RECONCILIATION_REQUIRED',
+    statusCode: 403,
+    data
   });
 }
 

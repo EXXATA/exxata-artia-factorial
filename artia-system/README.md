@@ -1,220 +1,130 @@
-# Sistema Artia - Apontamento de Horas
+# Sistema Artia
 
-Sistema de apontamento de horas refatorado com arquitetura DDD (Domain-Driven Design), separando backend e frontend.
+Sistema de apontamento de horas com backend em Node.js/Express, frontend em React/Vite, banco PostgreSQL no Supabase e autenticacao corporativa via Microsoft.
 
-## 🏗️ Arquitetura
-
-### Backend (Node.js + Express)
-- **Domain Layer**: Entidades, Value Objects, Repositórios (interfaces), Serviços de Domínio
-- **Application Layer**: Use Cases, DTOs
-- **Infrastructure Layer**: Implementações de Repositórios (MongoDB), File Storage, Cache
-- **Presentation Layer**: Controllers, Routes, Middlewares, Validators
-
-### Frontend (React + Vite)
-- **Components**: Componentes React organizados por feature
-- **Services**: Camada de comunicação com API
-- **Hooks**: Custom hooks para lógica reutilizável
-- **Store**: Gerenciamento de estado com Zustand
-- **Utils**: Funções utilitárias
-
-## 🚀 Tecnologias
+## Arquitetura
 
 ### Backend
-- Node.js 20+
-- Express.js
-- MongoDB + Mongoose
-- JWT para autenticação
-- Joi para validação
-- ExcelJS para manipulação de arquivos
-- Helmet, CORS, Rate Limiting para segurança
+- Domain layer com entidades, regras de negocio e contratos
+- Application layer com use cases
+- Infrastructure layer com repositorios Supabase e integracoes externas
+- Presentation layer com rotas, controllers e middlewares HTTP
 
 ### Frontend
-- React 18+
-- Vite
-- TailwindCSS
-- Zustand (state management)
-- React Query (cache de API)
-- Axios
-- Chart.js
-- React Hot Toast
+- React 18 + Vite
+- React Router para rotas
+- React Query para cache de API
+- TailwindCSS para interface
 
-## 📦 Instalação
+### Dados e autenticacao
+- Supabase PostgreSQL para persistencia
+- Supabase Auth com provider Microsoft/Azure
+- Politica corporativa no backend para dominio e tenant
 
-### Pré-requisitos
-- Node.js 20+
-- MongoDB 7+
-- Docker e Docker Compose (opcional)
+## Fluxo oficial de acesso
 
-### Instalação Local
+1. O usuario acessa `/login` e autentica com Microsoft.
+2. O frontend conclui a sessao no Supabase em `/auth/callback`.
+3. O app chama `GET /api/v1/auth/me` com o bearer token do Supabase.
+4. O backend valida a sessao, o provider Microsoft e a politica corporativa.
+5. Se o perfil local estiver pronto, o usuario entra nas rotas privadas.
+6. Se faltar provisionamento de negocio, o usuario vai para `/access-pending`.
 
-#### Backend
+Os fluxos legados de login/cadastro por senha e login via Artia nao fazem mais parte do caminho oficial do sistema.
+
+## Provisionamento
+
+- O trigger do Supabase cria ou atualiza o perfil tecnico em `public.users` no primeiro login Microsoft.
+- O acesso funcional exige `factorialEmployeeId`.
+- Quando faltar esse vinculo, a API responde `403 AUTH_PROVISIONING_PENDING` e o frontend mostra a tela de pendencia.
+- Quando houver conflito entre o `auth.user.id` e um perfil local encontrado por email, a API responde `403 USER_PROFILE_RECONCILIATION_REQUIRED`.
+
+Para reconciliar a base existente:
+
+```bash
+cd backend
+npm run reconcile:auth-users
+npm run reconcile:auth-users -- --apply
+```
+
+O modo padrao e `dry-run`. O modo `--apply` exige `SUPABASE_SERVICE_ROLE_KEY`.
+
+## Configuracao local
+
+### Backend
+
 ```bash
 cd backend
 npm install
-cp .env.example .env
-# Configure as variáveis de ambiente no .env
+Copy-Item .env.example .env
 npm run dev
 ```
 
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Variaveis importantes em `backend/.env`:
 
-### Instalação com Docker
-
-```bash
-docker-compose up -d
-```
-
-O sistema estará disponível em:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000
-- MongoDB: localhost:27017
-
-## 🔐 Segurança
-
-### APIs Protegidas
-- **Autenticação JWT**: Tokens com expiração configurável
-- **Rate Limiting**: 100 requisições/minuto por IP
-- **Validação de Entrada**: Joi/Express Validator
-- **Helmet.js**: Headers de segurança HTTP
-- **CORS**: Configurado para origens permitidas
-- **HTTPS**: Obrigatório em produção
-
-### Middlewares de Segurança
-- `authMiddleware`: Verificação de JWT
-- `rateLimitMiddleware`: Proteção contra DDoS
-- `validationMiddleware`: Validação de schemas
-- `errorHandler`: Tratamento centralizado de erros
-
-## 📡 API Endpoints
-
-### Eventos
-- `POST /api/v1/events` - Criar evento
-- `GET /api/v1/events` - Listar eventos (com filtros)
-- `GET /api/v1/events/:id` - Obter evento específico
-- `PUT /api/v1/events/:id` - Atualizar evento
-- `PATCH /api/v1/events/:id/move` - Mover evento
-- `DELETE /api/v1/events/:id` - Deletar evento
-
-### Projetos
-- `GET /api/v1/projects` - Listar projetos
-- `GET /api/v1/projects/search` - Buscar projetos
-- `GET /api/v1/projects/:id/activities` - Listar atividades
-- `POST /api/v1/projects/import` - Importar base de IDs (XLSX)
-
-### Exportação
-- `GET /api/v1/exports/csv` - Exportar CSV
-- `GET /api/v1/exports/xlsx` - Exportar XLSX
-
-## 🧪 Testes
-
-### Backend
-```bash
-cd backend
-npm test
-npm run test:coverage
-```
-
-### Frontend
-```bash
-cd frontend
-npm test
-```
-
-## 📝 Variáveis de Ambiente
-
-### Backend (.env)
 ```env
 PORT=3000
 NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/artia
-JWT_SECRET=your-secret-key
-JWT_REFRESH_SECRET=your-refresh-secret
-JWT_EXPIRES_IN=1h
-JWT_REFRESH_EXPIRES_IN=7d
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+MICROSOFT_ALLOWED_DOMAIN=exxata.com.br
+MICROSOFT_ALLOWED_TENANT_ID=
 CORS_ORIGIN=http://localhost:5173
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX_REQUESTS=100
+FACTORIAL_API_KEY=your-factorial-api-key
+FACTORIAL_API_URL=https://api.factorialhr.com
 ```
 
-### Frontend (.env)
-```env
-VITE_API_URL=http://localhost:3000/api/v1
-```
-
-## 🎯 Features Implementadas
-
-### Backend
-- ✅ Arquitetura DDD completa
-- ✅ CRUD de eventos com validação
-- ✅ Gestão de projetos e atividades
-- ✅ Importação de base de IDs (XLSX)
-- ✅ Exportação CSV e XLSX
-- ✅ Autenticação JWT
-- ✅ Rate limiting
-- ✅ Validação de schemas
-- ✅ Tratamento de erros centralizado
+As configuracoes `ARTIA_DB_*` continuam disponiveis para integracoes operacionais com o banco legado do Artia.
 
 ### Frontend
-- ✅ Estrutura de componentes React
-- ✅ Roteamento com React Router
-- ✅ State management com Zustand
-- ✅ Cache de API com React Query
-- ✅ Tema dark/light
-- ✅ Views: Calendário, Gantt, Tabela, Gráficos, Diretório
-- ✅ Integração com API backend
 
-## 🔄 Migração do Sistema Antigo
-
-O sistema original estava em um único arquivo HTML de 257KB. A refatoração trouxe:
-
-1. **Separação de Responsabilidades**: Front e back independentes
-2. **Manutenibilidade**: Código organizado em camadas DDD
-3. **Escalabilidade**: Arquitetura preparada para crescimento
-4. **Testabilidade**: Componentes isolados e testáveis
-5. **Segurança**: APIs protegidas com autenticação e validação
-6. **Performance**: Otimizações de cache e lazy loading
-
-## 📚 Estrutura de Diretórios
-
-```
-artia-system/
-├── backend/                 # API Node.js
-│   ├── src/
-│   │   ├── domain/         # Camada de Domínio
-│   │   ├── application/    # Casos de Uso
-│   │   ├── infrastructure/ # Repositórios, File Storage
-│   │   ├── presentation/   # Controllers, Routes
-│   │   └── config/         # Configurações
-│   └── tests/              # Testes
-├── frontend/               # React App
-│   ├── src/
-│   │   ├── components/    # Componentes React
-│   │   ├── hooks/         # Custom Hooks
-│   │   ├── services/      # API Services
-│   │   ├── store/         # State Management
-│   │   └── utils/         # Utilitários
-│   └── public/            # Assets estáticos
-├── shared/                # Código compartilhado
-└── docker-compose.yml     # Orquestração
+```bash
+cd frontend
+npm install
+Copy-Item .env.example .env
+npm run dev
 ```
 
-## 🤝 Contribuindo
+Variaveis importantes em `frontend/.env`:
 
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
+```env
+VITE_API_URL=/api/v1
+VITE_API_PROXY_TARGET=http://localhost:3100
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
 
-## 📄 Licença
+## Migrations
 
-MIT License
+As migrations do banco ficam em `backend/supabase/migrations`.
 
-## 👥 Autores
+Para aplicar localmente:
 
-Sistema refatorado seguindo princípios de DDD e Clean Architecture.
+```bash
+cd backend
+supabase db push
+```
+
+## Validacao
+
+### Backend
+
+```bash
+cd backend
+npm run test:microsoft-auth
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run build
+```
+
+## Estado atual
+
+- Autenticacao oficial: Microsoft + Supabase
+- Tela publica de pendencia: `/access-pending`
+- Rotas privadas liberadas apenas para usuarios `authenticated`
+- Provisionamento de negocio controlado pelo backend

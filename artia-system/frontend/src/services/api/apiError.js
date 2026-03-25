@@ -1,4 +1,8 @@
 const FALLBACK_LOCAL_API_URL = 'http://127.0.0.1:3100';
+const AUTH_BLOCKER_CODES = new Set([
+  'AUTH_PROVISIONING_PENDING',
+  'USER_PROFILE_RECONCILIATION_REQUIRED'
+]);
 
 function isLocalHost() {
   return ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -58,6 +62,24 @@ export function normalizeApiError(error) {
   normalizedError.cause = error;
   normalizedError.response = error.response;
   return normalizedError;
+}
+
+export function getApiErrorCode(error) {
+  return error?.response?.data?.code || error?.code || null;
+}
+
+export function getAuthBlocker(error) {
+  const code = getApiErrorCode(error);
+
+  if (!AUTH_BLOCKER_CODES.has(code)) {
+    return null;
+  }
+
+  return {
+    code,
+    message: error?.response?.data?.message || error?.message || 'Acesso bloqueado.',
+    data: error?.response?.data?.data || null
+  };
 }
 
 export function getApiErrorMessage(error, fallbackMessage) {

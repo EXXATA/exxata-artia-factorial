@@ -1,109 +1,93 @@
-# Artia Backend - API REST
+# Artia Backend
 
-Backend do sistema Artia seguindo arquitetura DDD (Domain-Driven Design).
+Backend do sistema Artia em Node.js/Express com arquitetura DDD, persistencia em Supabase/PostgreSQL e autenticacao corporativa Microsoft via Supabase Auth.
 
-## Estrutura DDD
+## Estrutura
 
-### Domain Layer (Camada de Domínio)
-Contém a lógica de negócio pura, independente de frameworks.
+### Domain layer
+- entidades e regras de negocio
+- value objects e erros de dominio
+- contratos de repositorio
 
-- **Entities**: Event, Project, Activity, User
-- **Value Objects**: TimeRange, DateRange, Email
-- **Repositories (Interfaces)**: IEventRepository, IProjectRepository
-- **Domain Services**: EventValidationService, TimeCalculationService, IdLookupService
+### Application layer
+- use cases
+- servicos de orquestracao
 
-### Application Layer (Camada de Aplicação)
-Orquestra a lógica de negócio através de casos de uso.
+### Infrastructure layer
+- repositorios Supabase
+- integracoes com Factorial e Artia
+- middlewares e adaptadores de autenticacao
 
-- **Use Cases**: CreateEvent, UpdateEvent, DeleteEvent, ListEvents, MoveEvent, ImportProjects, ExportCSV, ExportXLSX
-- **DTOs**: Objetos de transferência de dados
+### Presentation layer
+- rotas REST
+- controllers
+- middlewares HTTP
 
-### Infrastructure Layer (Camada de Infraestrutura)
-Implementações concretas de persistência e serviços externos.
+## Fluxo oficial de autenticacao
 
-- **Repositories**: EventRepository (MongoDB), ProjectRepository (MongoDB)
-- **File Storage**: CSVGenerator, XLSXGenerator, XLSXParser
-- **Database**: Conexão MongoDB
+1. O frontend inicia o login Microsoft no Supabase.
+2. O frontend recebe a sessao em `/auth/callback`.
+3. O token Supabase e enviado para `GET /api/v1/auth/me`.
+4. O backend valida sessao, provider, dominio e tenant.
+5. Se faltar provisionamento de negocio, responde com bloqueio estruturado.
 
-### Presentation Layer (Camada de Apresentação)
-Interface HTTP da aplicação.
+Codigos de bloqueio suportados:
 
-- **Controllers**: EventController, ProjectController, ExportController
-- **Routes**: Definição de rotas REST
-- **Middlewares**: auth, validation, rate limiting, error handling
-- **Validators**: Validação de schemas de entrada
+- `AUTH_PROVISIONING_PENDING`
+- `USER_PROFILE_RECONCILIATION_REQUIRED`
 
-## Instalação
+O backend nao usa JWT proprio e nao suporta mais login/cadastro por senha como fluxo oficial.
+
+## Instalacao
 
 ```bash
 npm install
-cp .env.example .env
-# Configure as variáveis de ambiente
+Copy-Item .env.example .env
 npm run dev
 ```
 
-## Scripts
-
-- `npm start` - Inicia o servidor em produção
-- `npm run dev` - Inicia o servidor em desenvolvimento com nodemon
-- `npm test` - Executa os testes
-- `npm run test:watch` - Executa os testes em modo watch
-- `npm run test:coverage` - Gera relatório de cobertura
-
-## Variáveis de Ambiente
+## Variaveis de ambiente
 
 ```env
 PORT=3000
 NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/artia
-JWT_SECRET=your-secret-key
-JWT_REFRESH_SECRET=your-refresh-secret
-JWT_EXPIRES_IN=1h
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+MICROSOFT_ALLOWED_DOMAIN=exxata.com.br
+MICROSOFT_ALLOWED_TENANT_ID=
 CORS_ORIGIN=http://localhost:5173
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX_REQUESTS=100
+FACTORIAL_API_KEY=your-factorial-api-key
+FACTORIAL_API_URL=https://api.factorialhr.com
 ```
 
-## API Endpoints
+Variaveis `ARTIA_DB_*` permanecem disponiveis para integracoes operacionais com o banco legado do Artia.
 
-Todos os endpoints requerem autenticação via JWT (exceto /health).
+## Scripts principais
 
-### Health Check
-- `GET /health` - Verifica status da API
+- `npm start` inicia o servidor em producao
+- `npm run dev` inicia o servidor em desenvolvimento
+- `npm run test:microsoft-auth` executa os testes de autenticacao Microsoft
+- `npm run reconcile:auth-users` executa a reconciliacao em dry-run
+- `npm run reconcile:auth-users -- --apply` provisiona usuarios sem auth user
 
-### Eventos
-- `POST /api/v1/events` - Criar evento
-- `GET /api/v1/events` - Listar eventos
-- `GET /api/v1/events/:id` - Obter evento
-- `PUT /api/v1/events/:id` - Atualizar evento
-- `PATCH /api/v1/events/:id/move` - Mover evento
-- `DELETE /api/v1/events/:id` - Deletar evento
+## Endpoints relevantes
 
-### Projetos
-- `GET /api/v1/projects` - Listar projetos
-- `GET /api/v1/projects/search?q=termo` - Buscar projetos
-- `GET /api/v1/projects/:id/activities` - Listar atividades
-- `POST /api/v1/projects/import` - Importar XLSX
-
-### Exportação
-- `GET /api/v1/exports/csv` - Exportar CSV
-- `GET /api/v1/exports/xlsx` - Exportar XLSX
-
-## Segurança
-
-- **JWT Authentication**: Tokens com expiração
-- **Rate Limiting**: 100 req/min por IP
-- **Input Validation**: Express Validator + Joi
-- **Helmet.js**: Security headers
-- **CORS**: Configurado para origens permitidas
+- `GET /health`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/events`
+- `GET /api/v1/projects`
+- `GET /api/v1/projects/search`
+- `GET /api/v1/projects/:id/activities`
 
 ## Testes
 
 ```bash
-npm test
+npm run test:microsoft-auth
 ```
 
-Estrutura de testes:
-- `tests/unit/` - Testes unitários de domínio
-- `tests/integration/` - Testes de integração
-- `tests/e2e/` - Testes end-to-end
+## Observacoes
+
+- `factorialEmployeeId` e o criterio minimo de prontidao para liberar o app.
+- `artiaUserId` e tratado como enriquecimento, nao como requisito de login.
+- A migration de cleanup remove `password_hash` e ajusta o trigger de provisionamento por email.

@@ -33,6 +33,18 @@ function clearAuthRedirectState() {
   window.history.replaceState({}, document.title, window.location.pathname);
 }
 
+function toSessionPayload(session) {
+  if (!session) {
+    return null;
+  }
+
+  return {
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresAt: session.expires_at || null
+  };
+}
+
 async function waitForSession(attempts = 12) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const {
@@ -73,7 +85,7 @@ export const microsoftAuthService = {
     const currentSession = await waitForSession(4);
     if (currentSession) {
       clearAuthRedirectState();
-      return authService.restoreSession();
+      return toSessionPayload(currentSession);
     }
 
     const hashSession = getHashSession();
@@ -97,7 +109,7 @@ export const microsoftAuthService = {
 
       if (data?.session) {
         clearAuthRedirectState();
-        return authService.restoreSession();
+        return toSessionPayload(data.session);
       }
     }
 
@@ -107,7 +119,7 @@ export const microsoftAuthService = {
     }
 
     clearAuthRedirectState();
-    return authService.restoreSession();
+    return toSessionPayload(session);
   },
 
   async restoreSession(options = {}) {

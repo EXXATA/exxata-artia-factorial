@@ -2,9 +2,9 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function PrivateRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { status } = useAuth();
 
-  if (isLoading) {
+  if (status === 'loading') {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
@@ -15,7 +15,11 @@ export default function PrivateRoute({ children }) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (status === 'pending') {
+    return <Navigate to="/access-pending" replace />;
+  }
+
+  if (status !== 'authenticated') {
     return <Navigate to="/login" replace />;
   }
 
