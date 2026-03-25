@@ -1,5 +1,5 @@
-import { addDays, formatDateBR, formatDateISO, startOfWeekMonday } from './dateUtils';
-import { calculateDuration } from './timeUtils';
+import { addDays, formatDateBR, formatDateISO, startOfWeekMonday } from './dateUtils.js';
+import { calculateDuration } from './timeUtils.js';
 
 export const CALENDAR_START_HOUR = 0;
 export const CALENDAR_END_HOUR = 24;
@@ -10,6 +10,12 @@ export const CALENDAR_MIN_EVENT_MINUTES = 1;
 export const CALENDAR_DEFAULT_EVENT_DURATION = 50;
 export const CALENDAR_GRID_START_MINUTES = CALENDAR_START_HOUR * 60;
 export const CALENDAR_GRID_END_MINUTES = CALENDAR_END_HOUR * 60;
+const EMPTY_SYNC_BREAKDOWN = {
+  totalMinutes: 0,
+  syncedMinutes: 0,
+  pendingMinutes: 0,
+  manualMinutes: 0
+};
 
 export function buildTimeOptions(stepMinutes = 1) {
   const options = [];
@@ -115,6 +121,59 @@ export function getEventMinutesByDay(events) {
     acc[day] = (acc[day] || 0) + calculateDuration(event.start, event.end);
     return acc;
   }, {});
+}
+
+export function buildCalendarDayBuckets({
+  weekDays = [],
+  events = [],
+  dailyDetailsByDate = {},
+  minutesByDay = {},
+  syncBreakdownByDay = {}
+} = {}) {
+  const buckets = Object.fromEntries(
+    weekDays.map((day) => {
+      const dayIso = formatDateISO(day);
+      const dayComparison = dailyDetailsByDate[dayIso] || null;
+
+      return [dayIso, {
+        dayComparison,
+        dayEvents: [],
+        dayMinutes: minutesByDay[dayIso] || 0,
+        artiaMinutes: Math.round((dayComparison?.artiaHours || 0) * 60),
+        syncBreakdown: syncBreakdownByDay[dayIso] || EMPTY_SYNC_BREAKDOWN,
+        remoteEntryLayouts: [],
+        unpositionedRemoteEntries: []
+      }];
+    })
+  );
+
+  events.forEach((event) => {
+    if (!event?.day || !buckets[event.day]) {
+      return;
+    }
+
+    buckets[event.day].dayEvents.push(event);
+  });
+
+  Object.values(buckets).forEach((bucket) => {
+    bucket.dayEvents.sort((left, right) => new Date(left.start) - new Date(right.start));
+
+    const remoteOnlyEntries = [...(bucket.dayComparison?.remoteOnlyArtiaEntries || [])]
+      .sort((left, right) => new Date(left.start) - new Date(right.start));
+
+    remoteOnlyEntries.forEach((entry) => {
+      const position = getClampedEventPosition(entry);
+
+      if (position.isVisible) {
+        bucket.remoteEntryLayouts.push({ entry, position });
+        return;
+      }
+
+      bucket.unpositionedRemoteEntries.push(entry);
+    });
+  });
+
+  return buckets;
 }
 
 export function getEventPosition(event) {

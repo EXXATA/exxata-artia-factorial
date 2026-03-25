@@ -192,12 +192,20 @@ export class UserReadProjectionService {
     const range = this.buildRange(options);
     await this.prepareProjectionRead(user, range, { forceRefresh: options.forceRefresh });
 
-    const [eventRows, dayRows] = await Promise.all([
+    const projectAccessScopeKey = this.cachedProjectAccessService.buildScopeKey(user.id);
+    const [eventRows, dayRows, projectAccessRows, projectAccessSyncState] = await Promise.all([
       this.projectionRepository.listEventProjections(user.id, range.startDate, range.endDate),
-      this.projectionRepository.listDayRollups(user.id, range.startDate, range.endDate)
+      this.projectionRepository.listDayRollups(user.id, range.startDate, range.endDate),
+      this.projectionRepository.listProjectAccess(user.id),
+      this.snapshotRepository.getSyncState('user_project_access', projectAccessScopeKey)
     ]);
 
-    return buildWeekViewResponse(eventRows, dayRows, { ...options, ...range });
+    return buildWeekViewResponse(eventRows, dayRows, {
+      ...options,
+      ...range,
+      accessibleProjectCount: projectAccessRows.length,
+      projectAccessLastSyncedAt: projectAccessSyncState?.last_synced_at || projectAccessRows[0]?.lastSyncedAt || null
+    });
   }
 
   async getRangeSummary(userId, options = {}) {

@@ -1,15 +1,21 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMoveEvent } from '../../hooks/useEvents';
-import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import { prefetchWeekViewData, useWeekViewData } from '../../hooks/useWeekViewData';
 import WorkedHoursRangePanel from '../integration/WorkedHoursRangePanel';
 import { addDays, getWeekDays, isToday, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
-import { combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getClampedEventPosition, getDefaultDraftFromSlot, getDraftFromRange, getEventMinuteRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
+import { buildCalendarDayBuckets, combineDayAndTime, extractTimeValue, formatWeekRangeLabel, formatWorkedTime, getDefaultDraftFromSlot, getDraftFromRange, getEventMinuteRange, getEventMinutesByDay, getEventPosition, getRangePosition, gridOffsetToMinutes, minutesToTime, snapMinutes, CALENDAR_DEFAULT_EVENT_DURATION, CALENDAR_END_HOUR, CALENDAR_GRID_END_MINUTES, CALENDAR_GRID_START_MINUTES, CALENDAR_MIN_EVENT_MINUTES, CALENDAR_SNAP_MINUTES, CALENDAR_START_HOUR, ROW_HEIGHT, SLOT_MINUTES } from '../../utils/eventViewUtils';
 import { getArtiaSyncPresentation, getEventSyncBreakdownByDay } from '../../utils/artiaSyncUtils';
 
 const DAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+const EMPTY_SYNC_BREAKDOWN = {
+  totalMinutes: 0,
+  syncedMinutes: 0,
+  pendingMinutes: 0,
+  manualMinutes: 0
+};
 
 const EventModal = lazy(() => import('./EventModal'));
 const ArtiaRemoteEntriesModal = lazy(() => import('./ArtiaRemoteEntriesModal'));
@@ -52,7 +58,6 @@ export default function CalendarView() {
     refresh,
     userScopeKey
   } = useWeekViewData({ startDate, endDate, enabled: Boolean(startDate && endDate) });
-  const { data: projectsData, isLoading: projectsLoading } = useProjects();
   const moveMutation = useMoveEvent();
 
   useRegisterGlobalAction({
@@ -62,7 +67,6 @@ export default function CalendarView() {
   });
 
   const events = weekViewData?.events || [];
-  const projects = projectsData?.data || [];
   const comparisonData = weekViewData || null;
   const dailyDetailsByDate = useMemo(
     () => Object.fromEntries((comparisonData?.dailyDetails || []).map((detail) => [detail.date, detail])),
@@ -70,6 +74,20 @@ export default function CalendarView() {
   );
   const minutesByDay = useMemo(() => getEventMinutesByDay(events), [events]);
   const syncBreakdownByDay = useMemo(() => getEventSyncBreakdownByDay(events), [events]);
+  const dayBuckets = useMemo(() => buildCalendarDayBuckets({
+    weekDays,
+    events,
+    dailyDetailsByDate,
+    minutesByDay,
+    syncBreakdownByDay
+  }), [dailyDetailsByDate, events, minutesByDay, syncBreakdownByDay, weekDays]);
+  const accessibleProjectCount = typeof comparisonData?.meta?.accessibleProjectCount === 'number'
+    ? comparisonData.meta.accessibleProjectCount
+    : null;
+  const projectsLoading = isLoading && !comparisonData;
+  const projects = useMemo(() => ({
+    length: accessibleProjectCount ?? 0
+  }), [accessibleProjectCount]);
   const slotCount = ((CALENDAR_END_HOUR - CALENDAR_START_HOUR) * 60) / SLOT_MINUTES;
   const slots = useMemo(() => Array.from({ length: slotCount }, (_, index) => index), [slotCount]);
 
@@ -423,8 +441,8 @@ export default function CalendarView() {
             {formatWeekRangeLabel(weekStart)}
           </div>
 
-          <div className={`ui-chip ${projectsLoading ? 'ui-chip-warning' : 'ui-chip-success'}`}>
-            <span className={`h-2.5 w-2.5 rounded-full ${projectsLoading ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+          <div className={`ui-chip ${(isLoading && !comparisonData) ? 'ui-chip-warning' : 'ui-chip-success'}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${(isLoading && !comparisonData) ? 'bg-amber-400' : 'bg-emerald-500'}`} />
             <span>{projectsLoading ? 'Base Artia MySQL carregando' : `Base Artia MySQL · ${projects.length} projetos`}</span>
           </div>
           {isFetching ? (
@@ -469,18 +487,12 @@ export default function CalendarView() {
               </div>
               {weekDays.map((day, index) => {
                 const dayIso = formatDateISO(day);
-                const dayMinutes = minutesByDay[dayIso] || 0;
-                const dayComparison = dailyDetailsByDate[dayIso] || null;
-                const syncBreakdown = syncBreakdownByDay[dayIso] || {
-                  totalMinutes: 0,
-                  syncedMinutes: 0,
-                  pendingMinutes: 0,
-                  manualMinutes: 0
-                };
-                const artiaMinutes = Math.round((dayComparison?.artiaHours || 0) * 60);
-                const unpositionedRemoteEntries = (dayComparison?.remoteOnlyArtiaEntries || []).filter((entry) => (
-                  !getClampedEventPosition(entry).isVisible
-                ));
+                const dayBucket = dayBuckets[dayIso];
+                const dayMinutes = dayBucket?.dayMinutes || 0;
+                const dayComparison = dayBucket?.dayComparison || null;
+                const syncBreakdown = dayBucket?.syncBreakdown || EMPTY_SYNC_BREAKDOWN;
+                const artiaMinutes = dayBucket?.artiaMinutes || 0;
+                const unpositionedRemoteEntries = dayBucket?.unpositionedRemoteEntries || [];
 
                 return (
                   <div key={dayIso} className={`border-r border-slate-200 px-3 py-3 dark:border-white/10 ${isToday(day) ? 'bg-primary/5' : ''}`}>
@@ -542,18 +554,9 @@ export default function CalendarView() {
               <div className="grid flex-1 grid-cols-7">
                 {weekDays.map((day) => {
                   const dayIso = formatDateISO(day);
-                  const dayComparison = dailyDetailsByDate[dayIso] || null;
-                  const dayEvents = events
-                    .filter((event) => event.day === dayIso)
-                    .sort((a, b) => new Date(a.start) - new Date(b.start));
-                  const remoteOnlyEntries = (dayComparison?.remoteOnlyArtiaEntries || [])
-                    .sort((a, b) => new Date(a.start) - new Date(b.start));
-                  const remoteEntryLayouts = remoteOnlyEntries
-                    .map((entry) => ({
-                      entry,
-                      position: getClampedEventPosition(entry)
-                    }))
-                    .filter(({ position }) => position.isVisible);
+                  const dayBucket = dayBuckets[dayIso];
+                  const dayEvents = dayBucket?.dayEvents || [];
+                  const remoteEntryLayouts = dayBucket?.remoteEntryLayouts || [];
 
                   return (
                     <div

@@ -117,6 +117,8 @@ export function buildWeekViewResponse(eventRows, dayRows, options = {}) {
       endDate: options.endDate,
       filterProject: options.project || null,
       filterActivity: options.activity || null,
+      accessibleProjectCount: Number(options.accessibleProjectCount || 0),
+      projectAccessLastSyncedAt: options.projectAccessLastSyncedAt || null,
       lastComputedAt: dayRows.reduce((latest, row) => {
         const current = row.last_computed_at || null;
         return !latest || (current && current > latest) ? current : latest;
