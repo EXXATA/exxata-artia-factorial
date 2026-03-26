@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { eventService } from '../services/api/eventService';
 import toast from 'react-hot-toast';
+import { getApiErrorMessage } from '../services/api/apiError';
+import { eventService } from '../services/api/eventService';
 
 export function useEvents(filters = {}) {
   return useQuery({
@@ -9,36 +10,60 @@ export function useEvents(filters = {}) {
   });
 }
 
-export function useCreateEvent() {
+export function useCreateEvent(options = {}) {
   const queryClient = useQueryClient();
+  const {
+    showSuccessToast = true,
+    showErrorToast = true,
+    invalidateQueries = true,
+    onSuccess: onSuccessCallback
+  } = options;
 
   return useMutation({
     mutationFn: eventService.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['events'] });
-      queryClient.invalidateQueries({ queryKey: ['views'] });
-      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
-      toast.success('Evento criado com sucesso!');
+    onSuccess: (response, variables, context) => {
+      if (invalidateQueries) {
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+        queryClient.invalidateQueries({ queryKey: ['views'] });
+      }
+      onSuccessCallback?.(response, variables, context);
+      if (showSuccessToast) {
+        toast.success('Evento criado com sucesso!');
+      }
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Erro ao criar evento');
+      if (showErrorToast) {
+        toast.error(getApiErrorMessage(error, 'Erro ao criar evento'));
+      }
     }
   });
 }
 
-export function useUpdateEvent() {
+export function useUpdateEvent(options = {}) {
   const queryClient = useQueryClient();
+  const {
+    showSuccessToast = true,
+    showErrorToast = true,
+    invalidateQueries = true,
+    onSuccess: onSuccessCallback
+  } = options;
 
   return useMutation({
     mutationFn: ({ id, data }) => eventService.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['events'] });
-      queryClient.invalidateQueries({ queryKey: ['views'] });
-      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
-      toast.success('Evento atualizado com sucesso!');
+    onSuccess: (response, variables, context) => {
+      if (invalidateQueries) {
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+        queryClient.invalidateQueries({ queryKey: ['views'] });
+      }
+      onSuccessCallback?.(response, variables, context);
+      if (showSuccessToast) {
+        toast.success('Evento atualizado com sucesso!');
+      }
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Erro ao atualizar evento');
+      if (showErrorToast) {
+        toast.error(getApiErrorMessage(error, 'Erro ao atualizar evento'));
+      }
     }
   });
 }
@@ -51,11 +76,10 @@ export function useDeleteEvent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['views'] });
-      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento deletado com sucesso!');
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Erro ao deletar evento');
+      toast.error(getApiErrorMessage(error, 'Erro ao deletar evento'));
     }
   });
 }
@@ -68,11 +92,10 @@ export function useMoveEvent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['views'] });
-      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       toast.success('Evento movido com sucesso!');
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Erro ao mover evento');
+      toast.error(getApiErrorMessage(error, 'Erro ao mover evento'));
     }
   });
 }
@@ -85,12 +108,42 @@ export function useImportLegacyEvents() {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['views'] });
-      queryClient.invalidateQueries({ queryKey: ['worked-hours-comparison'] });
       const imported = response?.data?.imported ?? 0;
       toast.success(`${imported} eventos importados com sucesso!`);
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || 'Erro ao importar apontamentos');
+      toast.error(getApiErrorMessage(error, 'Erro ao importar apontamentos'));
+    }
+  });
+}
+
+export function useAnalyzeEventImport() {
+  return useMutation({
+    mutationFn: ({ file, mapping }) => eventService.analyzeImport(file, mapping),
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, 'Erro ao analisar a planilha'));
+    }
+  });
+}
+
+export function useApplyEventImport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (rows) => eventService.applyImport(rows),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['views'] });
+      const imported = response?.data?.imported ?? 0;
+      const skippedWarnings = response?.data?.skippedWarnings ?? 0;
+      toast.success(
+        skippedWarnings > 0
+          ? `${imported} apontamento(s) importado(s); ${skippedWarnings} aviso(s) ignorado(s).`
+          : `${imported} apontamento(s) importado(s) com sucesso!`
+      );
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, 'Erro ao aplicar a importacao'));
     }
   });
 }

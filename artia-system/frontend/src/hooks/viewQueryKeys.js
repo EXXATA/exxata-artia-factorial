@@ -7,17 +7,17 @@ export function buildViewUserScopeKey(user) {
 export function getWeekViewQueryKey(userScopeKey, {
   startDate,
   endDate,
-  project,
-  activity
+  projectKey,
+  activityKey
 } = {}) {
-  return ['views', 'week', userScopeKey, startDate || null, endDate || null, project || null, activity || null];
+  return ['views', 'week', userScopeKey, startDate || null, endDate || null, projectKey || null, activityKey || null];
 }
 
 export function getRangeSummaryQueryKey(userScopeKey, {
   startDate,
   endDate,
-  project,
-  activity
+  projectKey,
+  activityKey
 } = {}) {
-  return ['views', 'range-summary', userScopeKey, startDate || null, endDate || null, project || null, activity || null];
+  return ['views', 'range-summary', userScopeKey, startDate || null, endDate || null, projectKey || null, activityKey || null];
 }

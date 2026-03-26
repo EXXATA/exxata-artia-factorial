@@ -8,7 +8,8 @@ import GanttWeeklyTable from './GanttWeeklyTable';
 import { addDays, getWeekDays, startOfWeekMonday, formatDateISO } from '../../utils/dateUtils';
 import { formatWeekRangeLabel, formatWorkedTime } from '../../utils/eventViewUtils';
 import { buildProjectWeeklyComparisonRows } from '../../utils/artiaSyncUtils';
-import { formatProjectOptionLabel, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
+import { formatProjectOptionLabel, mergeProjectFilterOptions } from '../../utils/viewFilterOptions';
+import { getActiveViewFilterValue, reconcileProjectFilter } from '../../utils/viewFilterState.js';
 import { buildComparisonByDay, getWeeklyFactorialHours } from './ganttViewUtils';
 
 export default function GanttView() {
@@ -24,7 +25,7 @@ export default function GanttView() {
   const weekQuery = useWeekViewData({
     startDate,
     endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined
+    projectKey: getActiveViewFilterValue(projectFilter)
   });
   const { data: projectsData } = useProjects();
 
@@ -37,8 +38,11 @@ export default function GanttView() {
   const comparisonData = weekQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeProjectCatalogOptions(projectCatalog),
-    [projectCatalog]
+    () => mergeProjectFilterOptions({
+      catalogProjects: projectCatalog,
+      availableProjects: comparisonData?.availableProjects || []
+    }),
+    [comparisonData?.availableProjects, projectCatalog]
   );
   const rows = useMemo(
     () => buildProjectWeeklyComparisonRows(comparisonData?.projectSummaries || [], weekDayIsos),
@@ -54,7 +58,7 @@ export default function GanttView() {
     void prefetchWeekViewData(queryClient, weekQuery.userScopeKey, {
       startDate: formatDateISO(addDays(weekDays[0], offsetDays)),
       endDate: formatDateISO(addDays(weekDays[6], offsetDays)),
-      project: projectFilter !== 'ALL' ? projectFilter : undefined
+      projectKey: getActiveViewFilterValue(projectFilter)
     });
   };
 
@@ -63,9 +67,9 @@ export default function GanttView() {
       return;
     }
 
-    const hasSelectedProject = projectOptions.some((project) => String(project.number) === String(projectFilter));
-    if (!hasSelectedProject) {
-      setProjectFilter('ALL');
+    const nextProjectFilter = reconcileProjectFilter(projectFilter, projectOptions);
+    if (nextProjectFilter !== projectFilter) {
+      setProjectFilter(nextProjectFilter);
     }
   }, [projectFilter, projectOptions]);
 
@@ -83,45 +87,49 @@ export default function GanttView() {
     <section className="ui-toolbar">
       <div className="ui-toolbar-row">
         <div className="ui-toolbar-group">
-          <button
-            onClick={() => setWeekStart((current) => addDays(current, -7))}
-            onMouseEnter={() => prefetchAdjacentWeek(-7)}
-            onFocus={() => prefetchAdjacentWeek(-7)}
-            disabled={weekQuery.isFetching}
-            className="app-action-button disabled:opacity-50"
-          >
-            Sem. anterior
-          </button>
-          <button
-            onClick={() => setWeekStart(startOfWeekMonday(new Date()))}
-            disabled={weekQuery.isFetching}
-            className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark disabled:opacity-50"
-          >
-            Hoje
-          </button>
-          <button
-            onClick={() => setWeekStart((current) => addDays(current, 7))}
-            onMouseEnter={() => prefetchAdjacentWeek(7)}
-            onFocus={() => prefetchAdjacentWeek(7)}
-            disabled={weekQuery.isFetching}
-            className="app-action-button disabled:opacity-50"
-          >
-            Prox. semana
-          </button>
+          <div className="ui-toolbar-segmented">
+            <button
+              onClick={() => setWeekStart((current) => addDays(current, -7))}
+              onMouseEnter={() => prefetchAdjacentWeek(-7)}
+              onFocus={() => prefetchAdjacentWeek(-7)}
+              disabled={weekQuery.isFetching}
+              className="ui-toolbar-button ui-toolbar-button-secondary"
+            >
+              Sem. anterior
+            </button>
+            <button
+              onClick={() => setWeekStart(startOfWeekMonday(new Date()))}
+              disabled={weekQuery.isFetching}
+              className="ui-toolbar-button ui-toolbar-button-primary"
+            >
+              Hoje
+            </button>
+            <button
+              onClick={() => setWeekStart((current) => addDays(current, 7))}
+              onMouseEnter={() => prefetchAdjacentWeek(7)}
+              onFocus={() => prefetchAdjacentWeek(7)}
+              disabled={weekQuery.isFetching}
+              className="ui-toolbar-button ui-toolbar-button-secondary"
+            >
+              Prox. semana
+            </button>
+          </div>
+
+          <span className="ui-toolbar-meta">
+            {formatWeekRangeLabel(weekStart)}
+          </span>
         </div>
 
         <div className="ui-toolbar-group">
-          <span className="ui-chip ui-chip-accent text-sm font-semibold">
-            {formatWeekRangeLabel(weekStart)}
-          </span>
-
-          <label className="ui-label">Projeto</label>
-          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="ui-input min-w-[240px]">
-            <option value="ALL">Todos os projetos</option>
-            {projectOptions.map((project) => (
-              <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
-            ))}
-          </select>
+          <div className="ui-toolbar-field ui-toolbar-field-lg">
+            <label className="ui-label">Projeto</label>
+            <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="ui-input w-full">
+              <option value="ALL">Todos os projetos</option>
+              {projectOptions.map((project) => (
+                <option key={project.key} value={project.key}>{formatProjectOptionLabel(project)}</option>
+              ))}
+            </select>
+          </div>
 
           {weekQuery.isFetching ? (
             <div className="ui-chip ui-chip-accent">

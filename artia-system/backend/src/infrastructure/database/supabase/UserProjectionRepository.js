@@ -4,6 +4,24 @@ const PAGE_SIZE = 1000;
 const INSERT_CHUNK_SIZE = 500;
 
 export class UserProjectionRepository {
+  applyViewFilters(query, {
+    projectKey = null,
+    activityKey = null,
+    supportsActivityKey = false
+  } = {}) {
+    let nextQuery = query;
+
+    if (projectKey) {
+      nextQuery = nextQuery.eq('project_key', projectKey);
+    }
+
+    if (supportsActivityKey && activityKey) {
+      nextQuery = nextQuery.eq('activity_key', activityKey);
+    }
+
+    return nextQuery;
+  }
+
   async fetchAllPages(buildQuery, pageSize = PAGE_SIZE) {
     const rows = [];
     let from = 0;
@@ -87,15 +105,18 @@ export class UserProjectionRepository {
     return this.listProjectAccess(userId);
   }
 
-  async listEventProjections(userId, startDate, endDate) {
-    const { data, error } = await supabase
+  async listEventProjections(userId, startDate, endDate, filters = {}) {
+    const { data, error } = await this.applyViewFilters(
+      supabase
       .from('user_event_projection')
       .select('*')
       .eq('user_id', userId)
       .gte('day', startDate)
       .lte('day', endDate)
       .order('day', { ascending: true })
-      .order('start_time', { ascending: true });
+      .order('start_time', { ascending: true }),
+      { ...filters, supportsActivityKey: true }
+    );
 
     if (error) {
       throw error;
@@ -120,15 +141,18 @@ export class UserProjectionRepository {
     return data || [];
   }
 
-  async listProjectDayRollups(userId, startDate, endDate) {
-    const { data, error } = await supabase
+  async listProjectDayRollups(userId, startDate, endDate, filters = {}) {
+    const { data, error } = await this.applyViewFilters(
+      supabase
       .from('user_project_day_rollups')
       .select('*')
       .eq('user_id', userId)
       .gte('day', startDate)
       .lte('day', endDate)
       .order('day', { ascending: true })
-      .order('project_number', { ascending: true, nullsFirst: false });
+      .order('project_number', { ascending: true, nullsFirst: false }),
+      { ...filters, supportsActivityKey: false }
+    );
 
     if (error) {
       throw error;
@@ -137,15 +161,18 @@ export class UserProjectionRepository {
     return data || [];
   }
 
-  async listActivityDayRollups(userId, startDate, endDate) {
-    const { data, error } = await supabase
+  async listActivityDayRollups(userId, startDate, endDate, filters = {}) {
+    const { data, error } = await this.applyViewFilters(
+      supabase
       .from('user_activity_day_rollups')
       .select('*')
       .eq('user_id', userId)
       .gte('day', startDate)
       .lte('day', endDate)
       .order('day', { ascending: true })
-      .order('activity_label', { ascending: true });
+      .order('activity_label', { ascending: true }),
+      { ...filters, supportsActivityKey: true }
+    );
 
     if (error) {
       throw error;

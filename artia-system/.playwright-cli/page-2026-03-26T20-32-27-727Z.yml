@@ -1,0 +1,19 @@
+- generic [ref=e6]:
+  - generic [ref=e7]:
+    - heading "Apontamento limpo, objetivo e pronto para operar." [level=1] [ref=e8]
+    - paragraph [ref=e9]: O workspace foi redesenhado para colocar o calendario e a leitura operacional em primeiro plano. Entre com sua conta corporativa para acessar o ambiente.
+    - generic [ref=e10]:
+      - generic [ref=e11]: Menu lateral recolhido, conteudo principal dominante e contexto sempre sob demanda.
+      - generic [ref=e12]: Conciliacao, atalhos e apoio ficam fora da superficie principal para reduzir ruido visual.
+      - generic [ref=e13]: Acesso permitido somente para contas Microsoft corporativas da Exxata.
+  - generic [ref=e14]:
+    - generic [ref=e17]:
+      - heading "Apontamento de Horas Artia" [level=2] [ref=e18]
+      - paragraph [ref=e19]: Entre com sua conta corporativa Microsoft da Exxata.
+    - generic [ref=e20]:
+      - button "Entrar com Microsoft" [ref=e21] [cursor=pointer]
+      - generic [ref=e22]:
+        - strong [ref=e23]: "Acesso:"
+        - text: apenas contas corporativas
+        - code [ref=e24]: "@exxata.com.br"
+        - text: autenticadas via Microsoft.

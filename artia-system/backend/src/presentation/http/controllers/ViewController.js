@@ -11,7 +11,7 @@ export class ViewController {
   async getWeek(req, res, next) {
     try {
       const userId = req.user.userId || req.user.id;
-      const { startDate, endDate, project, activity } = req.query;
+      const { startDate, endDate, projectKey, activityKey } = req.query;
 
       if (!startDate || !endDate) {
         return res.status(400).json({
@@ -23,8 +23,8 @@ export class ViewController {
       const result = await this.getWeekViewUseCase.execute(userId, {
         startDate,
         endDate,
-        project,
-        activity,
+        projectKey,
+        activityKey,
         forceRefresh: this.resolveForceRefresh(req.query)
       });
 
@@ -40,7 +40,7 @@ export class ViewController {
   async getRangeSummary(req, res, next) {
     try {
       const userId = req.user.userId || req.user.id;
-      const { startDate, endDate, project, activity } = req.query;
+      const { startDate, endDate, projectKey, activityKey } = req.query;
 
       if (!startDate || !endDate) {
         return res.status(400).json({
@@ -52,8 +52,8 @@ export class ViewController {
       const result = await this.getRangeSummaryViewUseCase.execute(userId, {
         startDate,
         endDate,
-        project,
-        activity,
+        projectKey,
+        activityKey,
         forceRefresh: this.resolveForceRefresh(req.query)
       });
 

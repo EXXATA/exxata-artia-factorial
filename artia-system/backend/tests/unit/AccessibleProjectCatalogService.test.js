@@ -138,3 +138,54 @@ test('AccessibleProjectCatalogService rejeita atividade sem ID Artia automatico'
     /Atividade sem ID Artia resolvido automaticamente\./
   );
 });
+
+test('AccessibleProjectCatalogService preserva a mensagem quando a atividade nao pertence ao projeto acessivel', async () => {
+  const service = new AccessibleProjectCatalogService(
+    {
+      async getProjectCatalog() {
+        return buildCatalog();
+      }
+    },
+    {
+      async getAccessibleProjectIdsForUser() {
+        return {
+          projectIds: ['10']
+        };
+      }
+    }
+  );
+
+  await assert.rejects(
+    () => service.resolveEventSelection(
+      { id: 'user-1' },
+      {
+        project: '1360',
+        activityLabel: 'Analise'
+      }
+    ),
+    /Atividade fora do projeto selecionado ou indisponivel no Artia\./
+  );
+});
+
+test('AccessibleProjectCatalogService expone project keys e activity keys canonicos para o front', async () => {
+  const service = new AccessibleProjectCatalogService(
+    {
+      async getProjectCatalog() {
+        return buildCatalog();
+      }
+    },
+    {
+      async getAccessibleProjectIdsForUser() {
+        return {
+          projectIds: ['10']
+        };
+      }
+    }
+  );
+
+  const projects = await service.getAccessibleProjectCatalog({ id: 'user-1' });
+
+  assert.equal(projects[0].key, '10');
+  assert.equal(projects[0].activities[0].key, '9001');
+  assert.equal(projects[0].activities[1].key, '10::sem id');
+});

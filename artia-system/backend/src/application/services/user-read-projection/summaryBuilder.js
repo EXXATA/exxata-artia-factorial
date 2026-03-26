@@ -1,4 +1,5 @@
 import { roundHours } from './shared.js';
+import { buildActivityKey } from './filterKeys.js';
 
 export function buildProjectAndActivitySummaries({ comparisons, systemEvents, artiaEntries, remoteOnlyEntryIds }) {
   const projectMap = new Map();
@@ -49,8 +50,8 @@ export function buildProjectAndActivitySummaries({ comparisons, systemEvents, ar
     return projectSummary.byDay[day];
   };
 
-  const ensureActivitySummary = (projectDescriptor, activityId, activityLabel) => {
-    const key = `${projectDescriptor.key}::${activityId || activityLabel || 'sem-atividade'}`;
+  const ensureActivitySummary = (projectDescriptor, activityId, activityLabel, activityKey = null) => {
+    const key = activityKey || buildActivityKey(activityId, activityLabel, projectDescriptor.key);
     if (!activityMap.has(key)) {
         activityMap.set(key, {
           key,
@@ -86,7 +87,12 @@ export function buildProjectAndActivitySummaries({ comparisons, systemEvents, ar
     };
     const projectSummary = ensureProjectSummary(projectDescriptor);
     const daySummary = ensureProjectDay(projectSummary, event.day);
-    const activitySummary = ensureActivitySummary(projectDescriptor, event.activityId, event.activityLabel);
+    const activitySummary = ensureActivitySummary(
+      projectDescriptor,
+      event.activityId,
+      event.activityLabel,
+      event.activityKey
+    );
 
     projectSummary.systemHours += event.hours;
     projectSummary.systemEventCount += 1;
@@ -127,7 +133,12 @@ export function buildProjectAndActivitySummaries({ comparisons, systemEvents, ar
     };
     const projectSummary = ensureProjectSummary(projectDescriptor);
     const daySummary = ensureProjectDay(projectSummary, entry.day);
-    const activitySummary = ensureActivitySummary(projectDescriptor, entry.activityId, entry.activity);
+    const activitySummary = ensureActivitySummary(
+      projectDescriptor,
+      entry.activityId,
+      entry.activityLabel || entry.activity,
+      entry.activityKey
+    );
     const isRemoteOnly = remoteOnlyEntryIds.has(entry.id);
 
     projectSummary.artiaHours += entry.hours;

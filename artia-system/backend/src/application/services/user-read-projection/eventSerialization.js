@@ -1,5 +1,8 @@
-import { normalizeText, roundHours, toIsoDay } from './shared.js';
+import { roundHours, toIsoDay } from './shared.js';
 import { buildProjectDisplayLabel } from './projectContext.js';
+import { buildActivityKey, matchesActivityFilter, matchesProjectFilter } from './filterKeys.js';
+
+export { buildActivityKey, matchesActivityFilter, matchesProjectFilter } from './filterKeys.js';
 
 export function resolveVisualEnd(entry) {
   if (entry?.end) {
@@ -35,47 +38,12 @@ export function resolveVisualEnd(entry) {
   };
 }
 
-export function matchesProjectFilter(projectFilter, payload) {
-  if (!projectFilter) {
-    return true;
-  }
-
-  const normalizedFilter = normalizeText(projectFilter);
-  return [
-    payload.projectKey,
-    payload.projectId,
-    payload.projectNumber,
-    payload.projectName,
-    payload.projectLabel,
-    payload.projectDisplayLabel,
-    payload.project
-  ]
-    .filter(Boolean)
-    .some((value) => {
-      const normalizedValue = normalizeText(value);
-      return normalizedValue === normalizedFilter || normalizedValue.includes(normalizedFilter);
-    });
-}
-
-export function matchesActivityFilter(activityFilter, activityId, activityLabel) {
-  if (!activityFilter) {
-    return true;
-  }
-
-  const normalizedFilter = normalizeText(activityFilter);
-  return [activityId, activityLabel]
-    .filter(Boolean)
-    .some((value) => {
-      const normalizedValue = normalizeText(value);
-      return normalizedValue === normalizedFilter || normalizedValue.includes(normalizedFilter);
-    });
-}
-
 export function serializeSystemEvent(event, projectDescriptor) {
   const startDate = new Date(event.start);
   const endDate = new Date(event.end);
   const minutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
   const projectDisplayLabel = buildProjectDisplayLabel(projectDescriptor, event.project);
+  const activityKey = buildActivityKey(event.activityId, event.activityLabel, projectDescriptor.key);
 
   return {
     id: event.id,
@@ -91,6 +59,7 @@ export function serializeSystemEvent(event, projectDescriptor) {
     projectName: projectDescriptor.name,
     projectLabel: projectDisplayLabel,
     projectDisplayLabel,
+    activityKey,
     activityId: event.activityId,
     activityLabel: event.activityLabel,
     notes: event.notes || '',
@@ -112,6 +81,7 @@ export function serializeSystemEvent(event, projectDescriptor) {
 export function serializeArtiaEntry(entry, projectDescriptor) {
   const visualEnd = resolveVisualEnd(entry);
   const projectDisplayLabel = buildProjectDisplayLabel(projectDescriptor, entry.project);
+  const activityKey = buildActivityKey(entry.activityId, entry.activity, projectDescriptor.key);
 
   return {
     id: entry.id,
@@ -129,6 +99,7 @@ export function serializeArtiaEntry(entry, projectDescriptor) {
     projectName: projectDescriptor.name,
     projectLabel: projectDisplayLabel,
     projectDisplayLabel,
+    activityKey,
     activity: entry.activity,
     activityLabel: entry.activity,
     activityId: entry.activityId,
@@ -167,6 +138,7 @@ export function normalizeEventProjectionRow(row) {
     projectName: row.project_name,
     projectLabel: row.project_label,
     projectDisplayLabel: row.project_display_label,
+    activityKey: row.activity_key || buildActivityKey(row.activity_id, row.activity_label, row.project_key),
     activityId: row.activity_id,
     activityLabel: row.activity_label,
     notes: row.notes || '',
@@ -189,6 +161,11 @@ export function normalizeEventProjectionRow(row) {
 }
 
 export function normalizeDayRollupRow(row) {
+  const normalizeArtiaEntries = (entries = []) => entries.map((entry) => ({
+    ...entry,
+    activityKey: entry.activityKey || buildActivityKey(entry.activityId, entry.activityLabel || entry.activity, entry.projectKey)
+  }));
+
   return {
     date: toIsoDay(row.day),
     factorialHours: Number(row.factorial_hours || 0),
@@ -198,8 +175,8 @@ export function normalizeDayRollupRow(row) {
     manualSystemHours: Number(row.manual_hours || 0),
     artiaHours: Number(row.artia_hours || 0),
     artiaEntryCount: Number(row.artia_entry_count || 0),
-    remoteOnlyArtiaEntries: Array.isArray(row.remote_only_entries_json) ? row.remote_only_entries_json : [],
-    artiaEntries: Array.isArray(row.artia_entries_json) ? row.artia_entries_json : [],
+    remoteOnlyArtiaEntries: Array.isArray(row.remote_only_entries_json) ? normalizeArtiaEntries(row.remote_only_entries_json) : [],
+    artiaEntries: Array.isArray(row.artia_entries_json) ? normalizeArtiaEntries(row.artia_entries_json) : [],
     artiaSourceAvailable: Boolean(row.artia_source_available),
     artiaSourceTable: row.artia_source_table || null,
     artiaReadReason: row.artia_read_reason || null,
@@ -232,6 +209,7 @@ export function normalizeActivityDayRollupRow(row) {
   return {
     day: toIsoDay(row.day),
     key: row.activity_key,
+    activityKey: row.activity_key,
     projectKey: row.project_key,
     projectId: row.project_id,
     projectNumber: row.project_number,

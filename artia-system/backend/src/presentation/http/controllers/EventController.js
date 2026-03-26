@@ -6,6 +6,8 @@ export class EventController {
     listEventsUseCase,
     moveEventUseCase,
     importLegacyEventsUseCase,
+    analyzeEventImportUseCase,
+    applyEventImportUseCase,
     integrationReadModelService,
     accessibleProjectCatalogService
   ) {
@@ -15,6 +17,8 @@ export class EventController {
     this.listEventsUseCase = listEventsUseCase;
     this.moveEventUseCase = moveEventUseCase;
     this.importLegacyEventsUseCase = importLegacyEventsUseCase;
+    this.analyzeEventImportUseCase = analyzeEventImportUseCase;
+    this.applyEventImportUseCase = applyEventImportUseCase;
     this.integrationReadModelService = integrationReadModelService;
     this.accessibleProjectCatalogService = accessibleProjectCatalogService;
   }
@@ -153,6 +157,59 @@ export class EventController {
       res.status(200).json({
         success: true,
         message: `Importação concluída. ${result.imported} eventos importados.`,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async analyzeImport(req, res, next) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No file uploaded'
+        });
+      }
+
+      let mapping = req.body.mapping || {};
+      if (typeof req.body.mapping === 'string') {
+        try {
+          mapping = JSON.parse(req.body.mapping);
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid mapping payload'
+          });
+        }
+      }
+
+      const result = await this.analyzeEventImportUseCase.execute({
+        buffer: req.file.buffer,
+        fileName: req.file.originalname,
+        mapping,
+        user: req.user
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async applyImport(req, res, next) {
+    try {
+      const result = await this.applyEventImportUseCase.execute({
+        rows: req.body.rows,
+        user: req.user
+      });
+
+      res.status(200).json({
+        success: true,
         data: result
       });
     } catch (error) {

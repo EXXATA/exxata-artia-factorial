@@ -31,7 +31,7 @@ export default function DirectoryView() {
   const comparisonQuery = useWorkedHoursComparison({
     startDate,
     endDate,
-    project: hasSelectedProject ? selectedProject.number : undefined,
+    projectKey: hasSelectedProject ? selectedProject.key : undefined,
     enabled: Boolean(hasSelectedProject && startDate && endDate)
   });
   const { data: comparisonData } = comparisonQuery;
@@ -78,6 +78,7 @@ export default function DirectoryView() {
     }
 
     return projectSummaries.find((summary) => (
+      String(summary.projectKey || '') === String(selectedProject.key || '') ||
       String(summary.projectId || '') === String(selectedProject.id || '') ||
       String(summary.projectNumber || '') === String(selectedProject.number || '')
     )) || null;
@@ -95,23 +96,26 @@ export default function DirectoryView() {
 
     const summaryByActivityKey = (activitySummaries || []).reduce((accumulator, item) => {
       if (
+        String(item.projectKey || '') === String(selectedProject.key || '') ||
         String(item.projectId || '') === String(selectedProject.id || '') ||
         String(item.projectNumber || '') === String(selectedProject.number || '')
       ) {
-        accumulator[String(item.activityId || item.activityLabel || item.key)] = item;
+        accumulator[String(item.key || item.activityId || item.activityLabel)] = item;
       }
 
       return accumulator;
     }, {});
 
     const catalogActivities = (selectedProject.activities || []).map((activity) => {
-      const summary = summaryByActivityKey[String(activity.artiaId || activity.id || activity.label)] ||
-        summaryByActivityKey[String(activity.id || activity.label)] ||
+      const activityKey = String(activity.key || activity.artiaId || activity.id || activity.label);
+      const summary = summaryByActivityKey[activityKey] ||
+        summaryByActivityKey[String(activity.artiaId || activity.id || activity.label)] ||
         summaryByActivityKey[String(activity.label)] ||
         null;
 
       return {
         id: activity.id,
+        key: activityKey,
         label: activity.label,
         artiaId: activity.artiaId,
         active: activity.active,
@@ -126,12 +130,14 @@ export default function DirectoryView() {
     const catalogLabels = new Set(catalogActivities.map((activity) => String(activity.label).trim().toLowerCase()));
     const extraActivities = (activitySummaries || [])
       .filter((item) => (
+        String(item.projectKey || '') === String(selectedProject.key || '') ||
         String(item.projectId || '') === String(selectedProject.id || '') ||
         String(item.projectNumber || '') === String(selectedProject.number || '')
       ))
       .filter((item) => !catalogLabels.has(String(item.activityLabel || '').trim().toLowerCase()))
       .map((item) => ({
         id: item.activityId || item.key,
+        key: item.key,
         label: item.activityLabel,
         artiaId: item.activityId,
         active: true,
@@ -159,17 +165,26 @@ export default function DirectoryView() {
     <section className="ui-toolbar">
       <div className="ui-toolbar-row">
         <div className="ui-toolbar-group">
-          <input
-            type="text"
-            placeholder="Buscar projeto..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            className="ui-input w-full min-w-[280px]"
-          />
-          <label className="ui-label">De</label>
-          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
-          <label className="ui-label">Ate</label>
-          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
+          <div className="ui-toolbar-field ui-toolbar-field-search">
+            <label className="ui-label">Projeto</label>
+            <input
+              type="search"
+              placeholder="Buscar por nome ou codigo"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="ui-input w-full"
+            />
+          </div>
+
+          <div className="ui-toolbar-field ui-toolbar-field-sm">
+            <label className="ui-label">De</label>
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input w-full" />
+          </div>
+
+          <div className="ui-toolbar-field ui-toolbar-field-sm">
+            <label className="ui-label">Ate</label>
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input w-full" />
+          </div>
         </div>
       </div>
     </section>

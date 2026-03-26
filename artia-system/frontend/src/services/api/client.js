@@ -1,14 +1,15 @@
 import axios from 'axios';
-import { clearAuthState } from '../auth/authStorage';
-import { supabase } from '../supabase/supabaseClient';
-import { normalizeApiError } from './apiError';
+import { clearAuthState } from '../auth/authStorage.js';
+import { supabase } from '../supabase/supabaseClient.js';
+import { normalizeApiError } from './apiError.js';
 
 function resolveApiBaseUrl() {
-  const configuredApiUrl = import.meta.env.VITE_API_URL || '/api/v1';
-  const proxyTarget = import.meta.env.VITE_API_PROXY_TARGET;
+  const viteEnv = import.meta.env || {};
+  const configuredApiUrl = viteEnv.VITE_API_URL || '/api/v1';
+  const proxyTarget = viteEnv.VITE_API_PROXY_TARGET;
   const isLocalHost = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-  if (import.meta.env.DEV && isLocalHost && proxyTarget && configuredApiUrl.startsWith('/')) {
+  if (viteEnv.DEV && isLocalHost && proxyTarget && configuredApiUrl.startsWith('/')) {
     return `${proxyTarget.replace('://localhost', '://127.0.0.1').replace(/\/$/, '')}${configuredApiUrl}`;
   }
 

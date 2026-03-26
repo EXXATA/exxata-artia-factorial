@@ -10,6 +10,21 @@ export function createEventRoutes(eventController) {
   const router = express.Router();
 
   router.post(
+    '/import/analyze',
+    authMiddleware,
+    upload.single('file'),
+    (req, res, next) => eventController.analyzeImport(req, res, next)
+  );
+
+  router.post(
+    '/import/apply',
+    authMiddleware,
+    eventValidator.importApply,
+    validationMiddleware,
+    (req, res, next) => eventController.applyImport(req, res, next)
+  );
+
+  router.post(
     '/import',
     authMiddleware,
     upload.single('file'),

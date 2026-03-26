@@ -1,12 +1,12 @@
-import { apiClient } from './client';
+import { apiClient } from './client.js';
 
-function buildParams({ startDate, endDate, project, activity, refresh } = {}) {
+function buildParams({ startDate, endDate, projectKey, activityKey, refresh } = {}) {
   const params = {};
 
   if (startDate) params.startDate = startDate;
   if (endDate) params.endDate = endDate;
-  if (project) params.project = project;
-  if (activity) params.activity = activity;
+  if (projectKey) params.projectKey = projectKey;
+  if (activityKey) params.activityKey = activityKey;
   if (refresh) params.refresh = true;
 
   return params;

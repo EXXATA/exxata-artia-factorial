@@ -24,6 +24,19 @@ function normalizeActivityLabel(value) {
   return normalizeText(value).replace(/[\u2013\u2014]/g, '-');
 }
 
+function buildProjectKey(project) {
+  return String(project?.key || project?.id || normalizeProjectNumber(project?.number) || 'sem-projeto').trim();
+}
+
+function buildActivityKey(project, activity) {
+  const activityId = String(activity?.artiaId || activity?.id || '').trim();
+  if (activityId) {
+    return activityId;
+  }
+
+  return `${buildProjectKey(project)}::${normalizeActivityLabel(activity?.label || 'sem-atividade') || 'sem-atividade'}`;
+}
+
 export class AccessibleProjectCatalogService {
   constructor(integrationReadModelService, artiaProjectAccessService) {
     this.integrationReadModelService = integrationReadModelService;
@@ -35,6 +48,7 @@ export class AccessibleProjectCatalogService {
 
     return projects.find((catalogProject) => (
       String(catalogProject.id) === String(projectIdentifier || '').trim()
+      || String(catalogProject.key || '').trim() === String(projectIdentifier || '').trim()
       || normalizeProjectNumber(catalogProject.number) === normalizedProjectIdentifier
     )) || null;
   }
@@ -48,6 +62,10 @@ export class AccessibleProjectCatalogService {
     }
 
     return (project?.activities || []).find((catalogActivity) => {
+      if (activityIdHint && String(catalogActivity.key || '').trim() === activityIdHint) {
+        return true;
+      }
+
       if (normalizedActivityLabel && normalizeActivityLabel(catalogActivity.label) === normalizedActivityLabel) {
         return true;
       }
@@ -58,6 +76,22 @@ export class AccessibleProjectCatalogService {
 
       return false;
     }) || null;
+  }
+
+  mapCatalogActivity(project, activity) {
+    return {
+      ...activity,
+      key: buildActivityKey(project, activity),
+      activityId: String(activity.artiaId || activity.id || '').trim()
+    };
+  }
+
+  mapCatalogProject(project) {
+    return {
+      ...project,
+      key: buildProjectKey(project),
+      activities: (project.activities || []).map((activity) => this.mapCatalogActivity(project, activity))
+    };
   }
 
   async getAccessibleProjectCatalog(user, options = {}) {
@@ -74,7 +108,9 @@ export class AccessibleProjectCatalogService {
     }
 
     const allowedProjectIds = new Set(access.projectIds.map((projectId) => String(projectId)));
-    const accessibleProjects = (catalog || []).filter((project) => allowedProjectIds.has(String(project.id)));
+    const accessibleProjects = (catalog || [])
+      .filter((project) => allowedProjectIds.has(String(project.id)))
+      .map((project) => this.mapCatalogProject(project));
 
     if (!searchTerm) {
       return accessibleProjects;

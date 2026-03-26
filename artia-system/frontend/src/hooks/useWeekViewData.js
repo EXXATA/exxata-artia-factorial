@@ -22,11 +22,11 @@ export async function prefetchWeekViewData(queryClient, userScopeKey, filters) {
   });
 }
 
-export function useWeekViewData({ startDate, endDate, project, activity, enabled = true } = {}) {
+export function useWeekViewData({ startDate, endDate, projectKey, activityKey, enabled = true } = {}) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const userScopeKey = buildViewUserScopeKey(user);
-  const queryKey = getWeekViewQueryKey(userScopeKey, { startDate, endDate, project, activity });
+  const queryKey = getWeekViewQueryKey(userScopeKey, { startDate, endDate, projectKey, activityKey });
   const canRun = isAuthenticated && !isLoading && enabled && Boolean(startDate) && Boolean(endDate);
 
   const query = useQuery({
@@ -37,7 +37,7 @@ export function useWeekViewData({ startDate, endDate, project, activity, enabled
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
     queryFn: async () => normalizeResponse(
-      await viewService.getWeekView({ startDate, endDate, project, activity }),
+      await viewService.getWeekView({ startDate, endDate, projectKey, activityKey }),
       'Erro ao buscar visão detalhada'
     )
   });
@@ -48,7 +48,7 @@ export function useWeekViewData({ startDate, endDate, project, activity, enabled
     }
 
     const data = normalizeResponse(
-      await viewService.getWeekView({ startDate, endDate, project, activity, refresh: true }),
+      await viewService.getWeekView({ startDate, endDate, projectKey, activityKey, refresh: true }),
       'Erro ao atualizar visão detalhada'
     );
     queryClient.setQueryData(queryKey, data);

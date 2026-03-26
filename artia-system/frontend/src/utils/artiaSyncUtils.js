@@ -1,4 +1,4 @@
-import { calculateDuration } from './timeUtils';
+import { calculateDuration } from './timeUtils.js';
 
 export function getArtiaSyncPresentation(status) {
   if (status === 'synced') {

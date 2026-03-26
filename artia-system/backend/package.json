@@ -10,9 +10,11 @@
     "dev:local": "node src/server.js",
     "vercel-build": "echo 'Build complete'",
     "test": "jest",
+    "test:views": "node --test tests/unit/UserReadProjectionBuilders.test.js tests/unit/AccessibleProjectCatalogService.test.js",
     "test:microsoft-auth": "node --test --test-isolation=none tests/unit/CorporateMicrosoftIdentityPolicy.test.js tests/unit/ResolveAuthenticatedUserUseCase.test.js tests/unit/AuthErrorResponse.test.js",
     "test:andre-analysis": "node scripts/analyze-user-functional.js andre.baptista@exxata.com.br 30",
     "reconcile:auth-users": "node scripts/reconcile-auth-users.js",
+    "rebuild:view-projections": "node scripts/rebuild-view-projections.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },

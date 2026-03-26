@@ -83,5 +83,19 @@ export function getAuthBlocker(error) {
 }
 
 export function getApiErrorMessage(error, fallbackMessage) {
-  return error?.response?.data?.message || error?.message || fallbackMessage;
+  const responseMessage = error?.response?.data?.message;
+  const validationMessages = Array.from(
+    new Set(
+      (error?.response?.data?.errors || [])
+        .map((entry) => entry?.msg)
+        .filter(Boolean)
+    )
+  );
+
+  if (validationMessages.length > 0) {
+    const prefix = responseMessage || error?.message || fallbackMessage;
+    return `${prefix}: ${validationMessages.join('; ')}`;
+  }
+
+  return responseMessage || error?.message || fallbackMessage;
 }

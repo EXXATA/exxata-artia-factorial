@@ -15,13 +15,13 @@ export function buildRangeSummaryResponse(dayRows, projectRows, activityRows, op
   const normalizedActivityRows = (activityRows || []).map((row) => normalizeActivityDayRollupRow(row));
   const dayDetailsByDate = Object.fromEntries(normalizedDayRows.map((row) => [row.date, row]));
 
-  const filteredProjectRows = normalizedProjectRows.filter((row) => matchesProjectFilter(options.project, row));
+  const filteredProjectRows = normalizedProjectRows.filter((row) => matchesProjectFilter(options.projectKey, row));
   const filteredActivityRows = normalizedActivityRows
-    .filter((row) => matchesProjectFilter(options.project, row))
-    .filter((row) => matchesActivityFilter(options.activity, row.activityId, row.activityLabel));
+    .filter((row) => matchesProjectFilter(options.projectKey, row))
+    .filter((row) => matchesActivityFilter(options.activityKey, row));
 
   const aggregatedByDay = new Map();
-  const sourceRows = options.activity ? filteredActivityRows : filteredProjectRows;
+  const sourceRows = options.activityKey ? filteredActivityRows : filteredProjectRows;
 
   sourceRows.forEach((row) => {
     const day = row.day;
@@ -47,7 +47,7 @@ export function buildRangeSummaryResponse(dayRows, projectRows, activityRows, op
 
   const dailyDetails = normalizedDayRows
     .map((row) => {
-      const aggregated = (!options.project && !options.activity)
+      const aggregated = (!options.projectKey && !options.activityKey)
         ? {
           systemHours: row.systemHours,
           syncedSystemHours: row.syncedSystemHours,
@@ -108,8 +108,8 @@ export function buildRangeSummaryResponse(dayRows, projectRows, activityRows, op
     filtersApplied: {
       startDate: options.startDate,
       endDate: options.endDate,
-      project: options.project || null,
-      activity: options.activity || null
+      projectKey: options.projectKey || null,
+      activityKey: options.activityKey || null
     }
   };
 

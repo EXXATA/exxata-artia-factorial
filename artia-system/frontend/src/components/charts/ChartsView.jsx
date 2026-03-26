@@ -9,7 +9,8 @@ import { useThemeStore } from '../../store/slices/uiSlice';
 import ChartsToolbar from './ChartsToolbar';
 import { addDays, formatDateISO, startOfWeekMonday } from '../../utils/dateUtils';
 import { formatWorkedTime } from '../../utils/eventViewUtils';
-import { formatProjectOptionLabel, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
+import { formatProjectOptionLabel, mergeProjectFilterOptions } from '../../utils/viewFilterOptions';
+import { getActiveViewFilterValue, reconcileProjectFilter } from '../../utils/viewFilterState.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
 
@@ -66,7 +67,7 @@ export default function ChartsView() {
   const comparisonQuery = useWorkedHoursComparison({
     startDate,
     endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined,
+    projectKey: getActiveViewFilterValue(projectFilter),
     enabled: Boolean(startDate && endDate)
   });
   const { data: projectsData } = useProjects();
@@ -80,8 +81,11 @@ export default function ChartsView() {
   const comparisonData = comparisonQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeProjectCatalogOptions(projectCatalog),
-    [projectCatalog]
+    () => mergeProjectFilterOptions({
+      catalogProjects: projectCatalog,
+      availableProjects: comparisonData?.availableProjects || []
+    }),
+    [comparisonData?.availableProjects, projectCatalog]
   );
   const timeline = useMemo(
     () => buildTimelineSeries(comparisonData?.dailyDetails || [], groupBy, source),
@@ -98,8 +102,9 @@ export default function ChartsView() {
   const topProjects = useMemo(() => projectDistribution.slice(0, 5), [projectDistribution]);
 
   useEffect(() => {
-    if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
-      setProjectFilter('ALL');
+    const nextProjectFilter = reconcileProjectFilter(projectFilter, projectOptions);
+    if (nextProjectFilter !== projectFilter) {
+      setProjectFilter(nextProjectFilter);
     }
   }, [projectFilter, projectOptions]);
 

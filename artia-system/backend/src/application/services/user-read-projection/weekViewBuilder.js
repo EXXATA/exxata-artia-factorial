@@ -12,16 +12,16 @@ import { buildProjectAndActivitySummaries } from './summaryBuilder.js';
 export function buildWeekViewResponse(eventRows, dayRows, options = {}) {
   const normalizedEvents = (eventRows || []).map((row) => normalizeEventProjectionRow(row));
   const filteredEvents = normalizedEvents
-    .filter((event) => matchesProjectFilter(options.project, event))
-    .filter((event) => matchesActivityFilter(options.activity, event.activityId, event.activityLabel));
+    .filter((event) => matchesProjectFilter(options.projectKey, event))
+    .filter((event) => matchesActivityFilter(options.activityKey, event));
   const filteredEventsByDay = groupByDay(filteredEvents, 'day');
 
   const dayDetails = (dayRows || []).map((row) => normalizeDayRollupRow(row));
   const dailyDetails = dayDetails
     .map((detail) => {
       const filteredArtiaEntries = (detail.artiaEntries || [])
-        .filter((entry) => matchesProjectFilter(options.project, entry))
-        .filter((entry) => matchesActivityFilter(options.activity, entry.activityId, entry.activityLabel));
+        .filter((entry) => matchesProjectFilter(options.projectKey, entry))
+        .filter((entry) => matchesActivityFilter(options.activityKey, entry));
       const matchedEntryIds = new Set(
         (filteredEventsByDay[detail.date] || [])
           .map((event) => event.artiaRemoteEntryId)
@@ -83,8 +83,8 @@ export function buildWeekViewResponse(eventRows, dayRows, options = {}) {
     filtersApplied: {
       startDate: options.startDate,
       endDate: options.endDate,
-      project: options.project || null,
-      activity: options.activity || null
+      projectKey: options.projectKey || null,
+      activityKey: options.activityKey || null
     }
   };
 
@@ -115,8 +115,8 @@ export function buildWeekViewResponse(eventRows, dayRows, options = {}) {
     meta: {
       startDate: options.startDate,
       endDate: options.endDate,
-      filterProject: options.project || null,
-      filterActivity: options.activity || null,
+      filterProjectKey: options.projectKey || null,
+      filterActivityKey: options.activityKey || null,
       accessibleProjectCount: Number(options.accessibleProjectCount || 0),
       projectAccessLastSyncedAt: options.projectAccessLastSyncedAt || null,
       lastComputedAt: dayRows.reduce((latest, row) => {

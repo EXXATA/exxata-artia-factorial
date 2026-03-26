@@ -11,11 +11,11 @@ function normalizeResponse(response, fallbackMessage) {
   return response.data;
 }
 
-export function useRangeSummaryView({ startDate, endDate, project, activity, enabled = true } = {}) {
+export function useRangeSummaryView({ startDate, endDate, projectKey, activityKey, enabled = true } = {}) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const userScopeKey = buildViewUserScopeKey(user);
-  const queryKey = getRangeSummaryQueryKey(userScopeKey, { startDate, endDate, project, activity });
+  const queryKey = getRangeSummaryQueryKey(userScopeKey, { startDate, endDate, projectKey, activityKey });
   const canRun = isAuthenticated && !isLoading && enabled && Boolean(startDate) && Boolean(endDate);
 
   const query = useQuery({
@@ -26,7 +26,7 @@ export function useRangeSummaryView({ startDate, endDate, project, activity, ena
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
     queryFn: async () => normalizeResponse(
-      await viewService.getRangeSummary({ startDate, endDate, project, activity }),
+      await viewService.getRangeSummary({ startDate, endDate, projectKey, activityKey }),
       'Erro ao buscar visão resumida'
     )
   });
@@ -37,7 +37,7 @@ export function useRangeSummaryView({ startDate, endDate, project, activity, ena
     }
 
     const data = normalizeResponse(
-      await viewService.getRangeSummary({ startDate, endDate, project, activity, refresh: true }),
+      await viewService.getRangeSummary({ startDate, endDate, projectKey, activityKey, refresh: true }),
       'Erro ao atualizar visão resumida'
     );
     queryClient.setQueryData(queryKey, data);

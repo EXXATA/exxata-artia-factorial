@@ -1,5 +1,6 @@
 import { WorkedHoursComparison } from '../../../domain/value-objects/WorkedHoursComparison.js';
 import {
+  buildActivityKey,
   normalizeEventProjectionRow,
   serializeArtiaEntry,
   serializeSystemEvent
@@ -71,6 +72,7 @@ export function buildEventProjectionRows(userId, computedAt, decoratedEvents, pr
       project_name: serialized.projectName,
       project_label: serialized.projectLabel,
       project_display_label: serialized.projectDisplayLabel,
+      activity_key: serialized.activityKey || buildActivityKey(serialized.activityId, serialized.activityLabel, serialized.projectKey),
       activity_id: serialized.activityId,
       activity_label: serialized.activityLabel,
       notes: serialized.notes || '',

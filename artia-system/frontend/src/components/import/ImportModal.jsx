@@ -1,334 +1,366 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '../common/Modal/Modal';
 import Button from '../common/Button/Button';
-import toast from 'react-hot-toast';
+import { useAnalyzeEventImport, useApplyEventImport } from '../../hooks/useEvents';
+import { extractTimeValue } from '../../utils/eventViewUtils';
 
-export default function ImportModal({ isOpen, onClose, onImport }) {
+const FIELD_ORDER = [
+  'date',
+  'startTime',
+  'endTime',
+  'project',
+  'activity',
+  'activityId',
+  'notes',
+  'artiaLaunched',
+  'workplace'
+];
+
+const FIELD_LABELS = {
+  date: 'Data',
+  startTime: 'Hora Início',
+  endTime: 'Hora de Término',
+  project: 'Projeto',
+  activity: 'Atividade',
+  activityId: 'ID da Atividade',
+  notes: 'Observação',
+  artiaLaunched: 'Lançamento Artia',
+  workplace: 'Local de trabalho'
+};
+
+const REQUIRED_FIELDS = new Set(['date', 'startTime', 'endTime', 'project', 'activity']);
+
+function buildMappingState(suggestedMapping = {}) {
+  return FIELD_ORDER.reduce((accumulator, field) => {
+    accumulator[field] = suggestedMapping[field]?.columnName || '';
+    return accumulator;
+  }, {});
+}
+
+function getConfidencePresentation(confidence = 0) {
+  if (confidence >= 0.95) {
+    return {
+      label: 'Alta',
+      className: 'border-emerald-300 bg-emerald-500/10 text-emerald-100'
+    };
+  }
+
+  if (confidence >= 0.75) {
+    return {
+      label: 'Média',
+      className: 'border-amber-300 bg-amber-500/10 text-amber-100'
+    };
+  }
+
+  return {
+    label: 'Baixa',
+    className: 'border-slate-300 bg-slate-500/10 text-slate-100'
+  };
+}
+
+function getStatusPresentation(status) {
+  if (status === 'critical') {
+    return {
+      label: 'Crítico',
+      className: 'border-red-400/40 bg-red-500/15 text-red-100'
+    };
+  }
+
+  if (status === 'warning') {
+    return {
+      label: 'Aviso',
+      className: 'border-amber-400/40 bg-amber-500/15 text-amber-100'
+    };
+  }
+
+  return {
+    label: 'Válido',
+    className: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+  };
+}
+
+export default function ImportModal({ isOpen, onClose, onApplied }) {
+  const analyzeImport = useAnalyzeEventImport();
+  const applyImport = useApplyEventImport();
+  const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
-  const [headers, setHeaders] = useState([]);
-  const [mapping, setMapping] = useState({
-    date: '',
-    startTime: '',
-    endTime: '',
-    project: '',
-    activity: '',
-    activityId: '',
-    notes: ''
-  });
-  const [preview, setPreview] = useState([]);
-  const [step, setStep] = useState(1); // 1: Upload, 2: Mapeamento, 3: Preview
+  const [mapping, setMapping] = useState(() => buildMappingState());
+  const [analysis, setAnalysis] = useState(null);
 
-  const handleFileChange = async (e) => {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-
-    setFile(selectedFile);
-
-    // Ler arquivo para detectar colunas
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const lines = text.split('\n');
-      
-      if (lines.length > 0) {
-        // Primeira linha = headers
-        const cols = lines[0].split(/[,;\t]/).map(h => h.trim().replace(/"/g, ''));
-        setHeaders(cols);
-
-        // Preview das primeiras 5 linhas
-        const previewData = lines.slice(1, 6).map(line => {
-          const values = line.split(/[,;\t]/).map(v => v.trim().replace(/"/g, ''));
-          return cols.reduce((obj, col, idx) => {
-            obj[col] = values[idx] || '';
-            return obj;
-          }, {});
-        });
-        setPreview(previewData);
-
-        // Auto-detectar colunas comuns
-        autoDetectColumns(cols);
-        setStep(2);
-      }
-    };
-    reader.readAsText(selectedFile);
+  const detectedColumns = analysis?.detectedColumns || [];
+  const previewRows = analysis?.previewRows || [];
+  const summary = analysis?.summary || {
+    totalRows: 0,
+    validRows: 0,
+    warningRows: 0,
+    criticalRows: 0
   };
 
-  const autoDetectColumns = (cols) => {
-    const newMapping = { ...mapping };
+  const canApply = summary.criticalRows === 0 && summary.validRows > 0 && !applyImport.isPending;
+  const previewRowsToShow = useMemo(() => previewRows.slice(0, 20), [previewRows]);
 
-    cols.forEach(col => {
-      const lower = col.toLowerCase();
-      
-      if (lower.includes('data') || lower.includes('date') || lower.includes('dia')) {
-        newMapping.date = col;
-      }
-      if (lower.includes('início') || lower.includes('inicio') || lower.includes('start') || lower.includes('de')) {
-        newMapping.startTime = col;
-      }
-      if (lower.includes('fim') || lower.includes('end') || lower.includes('término') || lower.includes('ate') || lower.includes('até')) {
-        newMapping.endTime = col;
-      }
-      if (lower.includes('projeto') || lower.includes('project')) {
-        newMapping.project = col;
-      }
-      if (lower.includes('atividade') || lower.includes('activity') || lower.includes('tarefa')) {
-        newMapping.activity = col;
-      }
-      if (lower.includes('id') && (lower.includes('artia') || lower.includes('atividade'))) {
-        newMapping.activityId = col;
-      }
-      if (lower.includes('nota') || lower.includes('observ') || lower.includes('note') || lower.includes('descri')) {
-        newMapping.notes = col;
-      }
-    });
-
-    setMapping(newMapping);
-  };
-
-  const handleImport = () => {
-    if (!file) {
-      toast.error('Selecione um arquivo');
+  useEffect(() => {
+    if (isOpen) {
       return;
     }
 
-    if (!mapping.date || !mapping.startTime || !mapping.endTime) {
-      toast.error('Mapeie pelo menos: Data, Hora Início e Hora Fim');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const lines = text.split('\n').slice(1); // Pular header
-      
-      const events = lines
-        .filter(line => line.trim())
-        .map(line => {
-          const values = line.split(/[,;\t]/).map(v => v.trim().replace(/"/g, ''));
-          const row = headers.reduce((obj, col, idx) => {
-            obj[col] = values[idx] || '';
-            return obj;
-          }, {});
-
-          const date = row[mapping.date];
-          const startTime = row[mapping.startTime];
-          const endTime = row[mapping.endTime];
-
-          // Combinar data + hora
-          const start = new Date(`${date}T${startTime}`);
-          const end = new Date(`${date}T${endTime}`);
-
-          return {
-            day: date,
-            start: start.toISOString(),
-            end: end.toISOString(),
-            project: row[mapping.project] || '',
-            activityLabel: row[mapping.activity] || '',
-            activityId: row[mapping.activityId] || '',
-            notes: row[mapping.notes] || '',
-            artiaLaunched: false
-          };
-        })
-        .filter(e => e.start && e.end);
-
-      onImport(events);
-      toast.success(`${events.length} eventos importados!`);
-      onClose();
-      resetState();
-    };
-    reader.readAsText(file);
-  };
-
-  const resetState = () => {
-    setFile(null);
-    setHeaders([]);
-    setMapping({
-      date: '',
-      startTime: '',
-      endTime: '',
-      project: '',
-      activity: '',
-      activityId: '',
-      notes: ''
-    });
-    setPreview([]);
     setStep(1);
+    setFile(null);
+    setMapping(buildMappingState());
+    setAnalysis(null);
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const handleAnalyze = async (nextStep = 2) => {
+    if (!file) {
+      return;
+    }
+
+    const response = await analyzeImport.mutateAsync({
+      file,
+      mapping: step === 1 ? {} : mapping
+    });
+
+    const nextAnalysis = response?.data || null;
+    setAnalysis(nextAnalysis);
+    setMapping(buildMappingState(nextAnalysis?.suggestedMapping));
+    setStep(nextStep);
+  };
+
+  const handleApply = async () => {
+    if (!canApply) {
+      return;
+    }
+
+    await applyImport.mutateAsync(previewRows);
+    onApplied?.();
+    onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Importar Planilha" size="xl">
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="border-2 border-dashed border-light-line dark:border-dark-line rounded-lg p-8 text-center">
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls,.txt"
-              onChange={handleFileChange}
-              className="hidden"
-              id="file-upload"
-            />
-            <label
-              htmlFor="file-upload"
-              className="cursor-pointer inline-flex flex-col items-center gap-3"
-            >
-              <div className="text-5xl">📄</div>
-              <div className="text-lg font-medium">
-                Clique para selecionar arquivo
-              </div>
-              <div className="text-sm text-light-muted dark:text-dark-muted">
-                CSV, XLSX, XLS ou TXT
-              </div>
-            </label>
-          </div>
-
-          <div className="bg-light-panel2 dark:bg-dark-panel2 rounded-lg p-4">
-            <h4 className="font-semibold mb-2">💡 Formatos aceitos:</h4>
-            <ul className="text-sm space-y-1 text-light-muted dark:text-dark-muted">
-              <li>• Exportação do Artia (CSV/XLSX)</li>
-              <li>• Planilhas personalizadas</li>
-              <li>• Separadores: vírgula, ponto-vírgula ou tabulação</li>
-            </ul>
-          </div>
+    <Modal isOpen={isOpen} onClose={onClose} title="Importar tabela" size="xl">
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
+          <span className={step >= 1 ? 'text-primary' : ''}>1. Upload</span>
+          <span>/</span>
+          <span className={step >= 2 ? 'text-primary' : ''}>2. Mapeamento</span>
+          <span>/</span>
+          <span className={step >= 3 ? 'text-primary' : ''}>3. Preview</span>
         </div>
-      )}
 
-      {step === 2 && (
-        <div className="space-y-4">
-          <div className="bg-primary/10 dark:bg-primary/20 border border-primary/30 rounded-lg p-4">
-            <h4 className="font-semibold mb-3">🔗 Mapeamento de Colunas</h4>
-            <p className="text-sm text-light-muted dark:text-dark-muted mb-4">
-              Relacione as colunas da planilha com os campos do sistema
-            </p>
+        {step === 1 ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border-2 border-dashed border-slate-300 px-6 py-10 text-center dark:border-white/10">
+              <input
+                id="table-import-file"
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={(event) => setFile(event.target.files?.[0] || null)}
+                className="hidden"
+              />
+              <label htmlFor="table-import-file" className="cursor-pointer space-y-2">
+                <div className="text-lg font-semibold">{file ? file.name : 'Selecione um CSV ou XLSX'}</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400">
+                  O wizard sugere o mapeamento, mostra warnings/críticos e só adiciona novas linhas válidas.
+                </div>
+              </label>
+            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  Data <span className="text-danger">*</span>
-                </label>
-                <select
-                  value={mapping.date}
-                  onChange={(e) => setMapping({ ...mapping, date: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              O fluxo moderno aceita <span className="font-medium">CSV</span> e <span className="font-medium">XLSX</span>.
+              Arquivos <span className="font-medium">XLS</span> binários antigos continuam no fluxo legado de suporte.
+            </div>
 
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  Hora Início <span className="text-danger">*</span>
-                </label>
-                <select
-                  value={mapping.startTime}
-                  onChange={(e) => setMapping({ ...mapping, startTime: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  Hora Fim <span className="text-danger">*</span>
-                </label>
-                <select
-                  value={mapping.endTime}
-                  onChange={(e) => setMapping({ ...mapping, endTime: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">Projeto</label>
-                <select
-                  value={mapping.project}
-                  onChange={(e) => setMapping({ ...mapping, project: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">Atividade</label>
-                <select
-                  value={mapping.activity}
-                  onChange={(e) => setMapping({ ...mapping, activity: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium block mb-1">ID Artia</label>
-                <select
-                  value={mapping.activityId}
-                  onChange={(e) => setMapping({ ...mapping, activityId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-
-              <div className="col-span-2">
-                <label className="text-sm font-medium block mb-1">Observações</label>
-                <select
-                  value={mapping.notes}
-                  onChange={(e) => setMapping({ ...mapping, notes: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-light-panel dark:bg-dark-panel border border-light-line dark:border-dark-line"
-                >
-                  <option value="">Selecione...</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={() => handleAnalyze(2)} disabled={!file || analyzeImport.isPending}>
+                {analyzeImport.isPending ? 'Analisando...' : 'Analisar arquivo'}
+              </Button>
             </div>
           </div>
+        ) : null}
 
-          {preview.length > 0 && (
-            <div>
-              <h4 className="font-semibold mb-2">👁️ Preview (primeiras 5 linhas)</h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-light-panel2 dark:bg-dark-panel2">
-                    <tr>
-                      {headers.map(h => (
-                        <th key={h} className="px-3 py-2 text-left">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.map((row, idx) => (
-                      <tr key={idx} className="border-t border-light-line dark:border-dark-line">
-                        {headers.map(h => (
-                          <td key={h} className="px-3 py-2">{row[h]}</td>
+        {step === 2 ? (
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              Corrija o mapeamento quando necessário. Campos obrigatórios precisam estar preenchidos para gerar um preview útil.
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {FIELD_ORDER.map((field) => {
+                const suggestion = analysis?.suggestedMapping?.[field] || {};
+                const confidence = getConfidencePresentation(suggestion.confidence);
+
+                return (
+                  <div key={field} className={field === 'notes' || field === 'workplace' ? 'md:col-span-2' : ''}>
+                    <label className="mb-1 block text-sm font-medium">
+                      {FIELD_LABELS[field]} {REQUIRED_FIELDS.has(field) ? <span className="text-red-400">*</span> : null}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={mapping[field] || ''}
+                        onChange={(event) => setMapping((current) => ({
+                          ...current,
+                          [field]: event.target.value
+                        }))}
+                        className="ui-input w-full"
+                      >
+                        <option value="">Não mapear</option>
+                        {detectedColumns.map((column) => (
+                          <option key={column.columnName} value={column.columnName}>
+                            {column.columnName}
+                          </option>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      </select>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${confidence.className}`}>
+                        {confidence.label}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 px-4 py-3 dark:border-white/10">
+              <div className="mb-2 text-sm font-medium">Colunas detectadas</div>
+              <div className="flex flex-wrap gap-2">
+                {detectedColumns.map((column) => (
+                  <span
+                    key={column.columnName}
+                    className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+                  >
+                    {column.columnName}
+                  </span>
+                ))}
               </div>
             </div>
-          )}
 
-          <div className="flex gap-2 justify-end pt-4 border-t border-light-line dark:border-dark-line">
-            <Button variant="secondary" onClick={() => { resetState(); onClose(); }}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleImport}>
-              Importar
-            </Button>
+            <div className="flex justify-between gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setStep(1);
+                  setAnalysis(null);
+                  setMapping(buildMappingState());
+                }}
+              >
+                Voltar
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={onClose}>
+                  Cancelar
+                </Button>
+                <Button variant="primary" onClick={() => handleAnalyze(3)} disabled={!file || analyzeImport.isPending}>
+                  {analyzeImport.isPending ? 'Atualizando...' : 'Gerar preview'}
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        ) : null}
+
+        {step === 3 ? (
+          <div className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 px-4 py-3 dark:border-white/10">
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Linhas</div>
+                <div className="mt-2 text-2xl font-semibold">{summary.totalRows}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-emerald-100/80">Válidas</div>
+                <div className="mt-2 text-2xl font-semibold text-emerald-50">{summary.validRows}</div>
+              </div>
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-amber-100/80">Warnings</div>
+                <div className="mt-2 text-2xl font-semibold text-amber-50">{summary.warningRows}</div>
+              </div>
+              <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-red-100/80">Críticos</div>
+                <div className="mt-2 text-2xl font-semibold text-red-50">{summary.criticalRows}</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 px-4 py-3 text-sm dark:border-white/10">
+              {summary.criticalRows > 0
+                ? 'A importação fica bloqueada enquanto houver linhas críticas.'
+                : 'Somente linhas válidas serão adicionadas. Warnings permanecem visíveis e serão ignorados no apply.'}
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 dark:bg-white/5">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Linha</th>
+                    <th className="px-3 py-2 text-left">Data</th>
+                    <th className="px-3 py-2 text-left">Horário</th>
+                    <th className="px-3 py-2 text-left">Projeto</th>
+                    <th className="px-3 py-2 text-left">Atividade</th>
+                    <th className="px-3 py-2 text-left">Observação</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left">Issues</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRowsToShow.map((row) => {
+                    const status = getStatusPresentation(row.status);
+                    const normalized = row.normalized || {};
+
+                    return (
+                      <tr key={row.rowId} className="border-t border-slate-200 dark:border-white/10">
+                        <td className="px-3 py-2 ui-mono">{row.rowNumber}</td>
+                        <td className="px-3 py-2">{normalized.day || row.sourceValues?.date || '-'}</td>
+                        <td className="px-3 py-2 ui-mono">
+                          {normalized.start && normalized.end
+                            ? `${extractTimeValue(normalized.start, normalized.day)} - ${extractTimeValue(normalized.end, normalized.day)}`
+                            : `${row.sourceValues?.startTime || '-'} - ${row.sourceValues?.endTime || '-'}`
+                          }
+                        </td>
+                        <td className="px-3 py-2">{normalized.project || row.sourceValues?.project || '-'}</td>
+                        <td className="px-3 py-2">{normalized.activity?.label || row.sourceValues?.activity || '-'}</td>
+                        <td className="max-w-[240px] truncate px-3 py-2">{normalized.notes || row.sourceValues?.notes || '-'}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                          {row.issues.length > 0
+                            ? row.issues.map((issue) => issue.message).join(' ')
+                            : 'Sem issues'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {previewRows.length > previewRowsToShow.length ? (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Exibindo as primeiras {previewRowsToShow.length} linhas de {previewRows.length}.
+              </div>
+            ) : null}
+
+            <div className="flex justify-between gap-2">
+              <Button variant="secondary" onClick={() => setStep(2)}>
+                Voltar ao mapeamento
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={onClose} disabled={applyImport.isPending}>
+                  Cancelar
+                </Button>
+                <Button variant="primary" onClick={handleApply} disabled={!canApply}>
+                  {applyImport.isPending ? 'Aplicando...' : 'Aplicar importação'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </Modal>
   );
 }

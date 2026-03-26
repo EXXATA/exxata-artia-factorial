@@ -97,18 +97,108 @@ body {
   }
 
   .ui-toolbar {
-    @apply rounded-[22px] px-4 py-4;
-    border: 1px solid var(--color-border);
-    background: linear-gradient(180deg, var(--color-panel-strong), var(--color-panel));
+    @apply rounded-[24px] px-4 py-4 md:px-5 md:py-5;
+    border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-panel-strong) 96%, white 4%),
+      color-mix(in srgb, var(--color-panel) 98%, transparent)
+    );
     box-shadow: var(--shadow-card);
   }
 
   .ui-toolbar-row {
-    @apply flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between;
+    @apply grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end;
   }
 
   .ui-toolbar-group {
-    @apply flex flex-wrap items-center gap-3 text-sm;
+    @apply flex min-w-0 flex-wrap items-end gap-3 md:gap-4 text-sm;
+  }
+
+  .ui-toolbar-field {
+    @apply flex min-w-0 flex-col gap-2;
+  }
+
+  .ui-toolbar-field-xs {
+    flex: 0 1 136px;
+    min-width: 136px;
+  }
+
+  .ui-toolbar-field-sm {
+    flex: 0 1 156px;
+    min-width: 148px;
+  }
+
+  .ui-toolbar-field-md {
+    flex: 1 1 220px;
+    min-width: 190px;
+  }
+
+  .ui-toolbar-field-lg {
+    flex: 1 1 280px;
+    min-width: 220px;
+  }
+
+  .ui-toolbar-field-search {
+    flex: 1 1 360px;
+    min-width: 260px;
+  }
+
+  .ui-toolbar-actions {
+    @apply flex flex-wrap items-center justify-start gap-2 xl:justify-end;
+  }
+
+  .ui-toolbar-segmented {
+    @apply inline-flex flex-wrap items-center gap-2 rounded-[20px] p-1.5;
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-panel-muted) 92%, transparent);
+  }
+
+  .ui-toolbar-segmented .ui-toolbar-button {
+    box-shadow: none;
+  }
+
+  .ui-toolbar-segmented .ui-toolbar-button-secondary {
+    background: transparent;
+  }
+
+  .ui-toolbar-segmented .ui-toolbar-button-secondary:hover {
+    background: var(--color-panel-strong);
+  }
+
+  .ui-toolbar-meta {
+    @apply inline-flex items-center rounded-full px-3 py-2 text-sm font-semibold;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent-soft) 72%, var(--color-panel-strong) 28%);
+    color: var(--color-accent);
+  }
+
+  .ui-toolbar-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-[18px] px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50;
+  }
+
+  .ui-toolbar-button-secondary {
+    border: 1px solid var(--color-border);
+    background: var(--color-panel-strong);
+    color: var(--color-text);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .ui-toolbar-button-secondary:hover {
+    border-color: var(--color-border-strong);
+    background: color-mix(in srgb, var(--color-panel-strong) 92%, white 8%);
+  }
+
+  .ui-toolbar-button-primary {
+    border: 1px solid var(--color-accent);
+    background: var(--color-accent);
+    color: #ffffff;
+    box-shadow: 0 16px 30px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  }
+
+  .ui-toolbar-button-primary:hover {
+    border-color: color-mix(in srgb, var(--color-accent) 82%, black);
+    background: color-mix(in srgb, var(--color-accent) 88%, black);
   }
 
   .ui-surface {
@@ -119,7 +209,7 @@ body {
   }
 
   .ui-input {
-    @apply rounded-2xl px-4 py-2.5 text-sm outline-none transition;
+    @apply h-11 rounded-[18px] px-4 text-sm outline-none transition;
     border: 1px solid var(--color-border);
     background: var(--color-panel-strong);
     color: var(--color-text);
@@ -244,6 +334,52 @@ body {
   .ui-table-row {
     @apply transition;
     border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .ui-table-cell {
+    @apply min-h-[40px] w-full rounded-lg px-2 py-1.5 transition;
+  }
+
+  .ui-table-cell-editable {
+    cursor: cell;
+  }
+
+  .ui-table-cell-active {
+    background: color-mix(in srgb, var(--color-panel-strong) 96%, var(--color-accent-soft));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 38%, transparent);
+  }
+
+  .ui-table-cell-saving {
+    background: color-mix(in srgb, var(--color-accent-soft) 55%, transparent);
+  }
+
+  .ui-table-cell-error {
+    background: rgba(220, 38, 38, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.22);
+  }
+
+  .ui-table-cell-status {
+    min-height: 52px;
+  }
+
+  .ui-table-cell-input {
+    @apply w-full min-w-0 bg-transparent px-0 py-0 text-sm outline-none transition;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: var(--color-text);
+    appearance: none;
+    line-height: 1.45;
+  }
+
+  .ui-table-cell-input:focus {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .ui-table-cell-input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .ui-empty-state {
@@ -856,6 +992,17 @@ body {
 
 .ui-input::placeholder {
   color: var(--color-muted-2);
+}
+
+.ui-table-cell-input::placeholder {
+  color: var(--color-muted-2);
+}
+
+.ui-table-cell-input::-webkit-calendar-picker-indicator,
+.ui-table-cell-input::-webkit-clear-button,
+.ui-table-cell-input::-webkit-inner-spin-button {
+  display: none;
+  -webkit-appearance: none;
 }
 
 .ui-input:focus {

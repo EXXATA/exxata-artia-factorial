@@ -1,4 +1,4 @@
-import apiClient from './client';
+import apiClient from './client.js';
 
 export const eventService = {
   async getAll(filters = {}) {
@@ -46,6 +46,31 @@ export const eventService = {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
+    });
+
+    return response.data;
+  },
+
+  async analyzeImport(file, mapping = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (mapping && Object.keys(mapping).length > 0) {
+      formData.append('mapping', JSON.stringify(mapping));
+    }
+
+    const response = await apiClient.post('/events/import/analyze', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+
+    return response.data;
+  },
+
+  async applyImport(rows = []) {
+    const response = await apiClient.post('/events/import/apply', {
+      rows
     });
 
     return response.data;

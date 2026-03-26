@@ -1,114 +1,233 @@
-import { formatDateBR } from '../../utils/dateUtils';
-import { extractTimeValue, formatWorkedTime } from '../../utils/eventViewUtils';
-import { getArtiaSyncPresentation } from '../../utils/artiaSyncUtils';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { useCreateEvent, useUpdateEvent } from '../../hooks/useEvents';
+import { getEventMinutesByDay } from '../../utils/eventViewUtils';
+import { calculateDuration } from '../../utils/timeUtils';
+import TableDetailRow from './TableDetailRow';
+import TableAutosaveStatus from './TableAutosaveStatus.jsx';
+import { TABLE_DETAIL_COLUMNS, TABLE_DETAIL_TABLE_MIN_WIDTH } from './tableDetailColumns.js';
+import { useTableCellEditing } from './useTableCellEditing.js';
+import { buildInlineDraftRow } from './tableEditingUtils.js';
+import { buildRemoteOnlyRows, sortRowsByDayAndStart } from './tableViewUtils';
 
-export default function TableDetailTable({
+const EMPTY_FLAGS = Object.freeze([]);
+const EMPTY_ROWS = Object.freeze([]);
+
+const TableDetailTable = forwardRef(function TableDetailTable({
+  dailyDetails = [],
   dailyDetailsByDate,
-  minutesByDay,
   onSelectEvent,
   onSelectRemoteEntry,
-  rows
-}) {
-  return (
-    <section className="ui-table-shell">
-      <div className="ui-table-scroll">
-        <table className="min-w-full border-collapse text-sm text-slate-700 dark:text-slate-200">
-          <thead className="ui-table-head">
-            <tr>
-              <th className="px-4 py-3">Data</th>
-              <th className="px-4 py-3">Origem</th>
-              <th className="px-4 py-3">Projeto</th>
-              <th className="px-4 py-3">Hora Inicio</th>
-              <th className="px-4 py-3">Hora de Termino</th>
-              <th className="px-4 py-3">Esforco</th>
-              <th className="px-4 py-3">Esforco Dia</th>
-              <th className="px-4 py-3">Factorial Dia</th>
-              <th className="px-4 py-3">Atividade</th>
-              <th className="px-4 py-3">Observacao</th>
-              <th className="px-4 py-3">Status Artia</th>
-              <th className="px-4 py-3">Registro Artia</th>
-              <th className="px-4 py-3">ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan="13" className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
-                  Nenhum apontamento encontrado para os filtros selecionados.
-                </td>
-              </tr>
-            ) : (
-              rows.map((event) => {
-                const syncPresentation = event.rowType === 'system'
-                  ? getArtiaSyncPresentation(event.artiaSyncStatus)
-                  : {
-                    label: 'Somente Artia',
-                    badgeClassName: 'border-violet-400/30 bg-violet-500/10 text-violet-100'
-                  };
-                const dayComparison = dailyDetailsByDate[event.day] || null;
-                const rowDayMinutes = event.rowType === 'system'
-                  ? (minutesByDay[event.day] || 0)
-                  : Math.round((dayComparison?.artiaHours || 0) * 60);
+  events = [],
+  projects = [],
+  onPersistedChange = null
+}, ref) {
+  const createEventMutation = useCreateEvent({
+    showSuccessToast: false,
+    showErrorToast: false,
+    invalidateQueries: false
+  });
+  const updateEventMutation = useUpdateEvent({
+    showSuccessToast: false,
+    showErrorToast: false,
+    invalidateQueries: false
+  });
 
-                return (
-                  <tr
-                    key={`${event.rowType}-${event.id}`}
-                    onClick={() => {
-                      if (event.rowType === 'artia_only') {
-                        onSelectRemoteEntry(event);
-                        return;
-                      }
+  const {
+    activeCell,
+    draftRowsById,
+    errorCellsByRowId,
+    optimisticSystemRows,
+    pendingCommitCountsByRowId,
+    savingCellsByRowId,
+    lastErrorMessage,
+    lastSavedAt,
+    activateCell,
+    clearEditingState,
+    commitCellOnChange,
+    handleCellBlur,
+    handleCellKeyDown,
+    insertDraftRow,
+    updateCellValue
+  } = useTableCellEditing({
+    events,
+    projects,
+    createEventMutation,
+    updateEventMutation,
+    onPersistedChange
+  });
 
-                      if (event.rowType === 'system') {
-                        onSelectEvent(event);
-                      }
-                    }}
-                    className={`ui-table-row ${event.rowType === 'system' || event.rowType === 'artia_only' ? 'cursor-pointer' : ''} ${event.rowType === 'artia_only' ? 'bg-violet-50 dark:bg-violet-500/5' : ''}`}
-                  >
-                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{formatDateBR(event.day)}</td>
-                    <td className="px-4 py-3 text-xs">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 ${event.rowType === 'system' ? 'border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200' : 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-500/10 dark:text-violet-100'}`}>
-                        {event.rowType === 'system' ? 'Sistema' : 'Artia'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{event.project}</td>
-                    <td className="px-4 py-3 ui-mono">{extractTimeValue(event.start, event.day)}</td>
-                    <td className="px-4 py-3 ui-mono">{extractTimeValue(event.end, event.day)}</td>
-                    <td className="px-4 py-3 ui-mono text-primary dark:text-primary-light">{formatWorkedTime(event.effortMinutes)}</td>
-                    <td className="px-4 py-3 ui-mono text-emerald-700 dark:text-emerald-200">{formatWorkedTime(rowDayMinutes)}</td>
-                    <td className="px-4 py-3 ui-mono text-slate-600 dark:text-slate-300">{formatWorkedTime(Math.round((dayComparison?.factorialHours || 0) * 60))}</td>
-                    <td className="px-4 py-3">{event.activityLabel}</td>
-                    <td className="max-w-[260px] truncate px-4 py-3 text-slate-500 dark:text-slate-400">{event.notes || '-'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${syncPresentation.badgeClassName}`}>
-                          {syncPresentation.label}
-                        </span>
-                        {event.endEstimated ? (
-                          <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/15 px-2.5 py-1 text-xs text-amber-700 dark:text-amber-100">
-                            Horario estimado
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                      {event.artiaRemoteEntryId ? (
-                        <div className="space-y-1">
-                          <div className="ui-mono text-emerald-700 dark:text-emerald-100">{event.artiaRemoteEntryId}</div>
-                          {event.artiaRemoteHours > 0 && <div>{event.artiaRemoteHours.toFixed(2)}h</div>}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 dark:text-slate-500">{event.rowType === 'system' ? (event.artiaSourceAvailable ? 'Nao encontrado' : 'Leitura indisponivel') : '-'}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{event.activityId || '-'}</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+  const mergedSystemRows = useMemo(() => {
+    const optimisticRowsById = new Map(optimisticSystemRows.map((event) => [event.id, event]));
+    const serverEventIds = new Set(events.map((event) => event.id));
+    const mergedRows = events.map((event) => optimisticRowsById.get(event.id) || event);
+
+    for (const optimisticEvent of optimisticSystemRows) {
+      if (!serverEventIds.has(optimisticEvent.id)) {
+        mergedRows.push(optimisticEvent);
+      }
+    }
+
+    return mergedRows.sort(sortRowsByDayAndStart);
+  }, [events, optimisticSystemRows]);
+
+  const minutesByDay = useMemo(
+    () => getEventMinutesByDay(mergedSystemRows),
+    [mergedSystemRows]
   );
-}
+
+  const inlineDraft = draftRowsById['draft-inline'] || null;
+  const inlineDraftRow = useMemo(() => {
+    if (!inlineDraft) {
+      return EMPTY_ROWS;
+    }
+
+    return [buildInlineDraftRow(inlineDraft)].filter(Boolean);
+  }, [inlineDraft]);
+
+  const systemRows = useMemo(
+    () => mergedSystemRows.map((event) => ({
+      rowType: 'system',
+      ...event,
+      effortMinutes: calculateDuration(event.start, event.end)
+    })),
+    [mergedSystemRows]
+  );
+
+  const remoteOnlyRows = useMemo(
+    () => buildRemoteOnlyRows(dailyDetails),
+    [dailyDetails]
+  );
+
+  const rows = useMemo(() => {
+    return [...systemRows, ...inlineDraftRow, ...remoteOnlyRows].sort(sortRowsByDayAndStart);
+  }, [inlineDraftRow, remoteOnlyRows, systemRows]);
+
+  const rowsRef = useRef(rows);
+  const activateCellRef = useRef(activateCell);
+  const blurHandlerRef = useRef(handleCellBlur);
+  const changeCommitHandlerRef = useRef(commitCellOnChange);
+  const keyDownHandlerRef = useRef(handleCellKeyDown);
+  const valueChangeHandlerRef = useRef(updateCellValue);
+  const latestDraftsRef = useRef(draftRowsById);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  useEffect(() => {
+    latestDraftsRef.current = draftRowsById;
+  }, [draftRowsById]);
+
+  useEffect(() => {
+    activateCellRef.current = activateCell;
+    blurHandlerRef.current = handleCellBlur;
+    changeCommitHandlerRef.current = commitCellOnChange;
+    keyDownHandlerRef.current = handleCellKeyDown;
+    valueChangeHandlerRef.current = updateCellValue;
+  }, [activateCell, commitCellOnChange, handleCellBlur, handleCellKeyDown, updateCellValue]);
+
+  const handleActivateCell = useCallback((row, columnKey) => (
+    activateCellRef.current(row, columnKey)
+  ), []);
+
+  const handleBlurCell = useCallback((row, columnKey) => (
+    blurHandlerRef.current(
+      row,
+      columnKey,
+      rowsRef.current,
+      latestDraftsRef.current[row.id] || null
+    )
+  ), []);
+
+  const handleKeyDownCell = useCallback((row, columnKey, keyboardEvent) => {
+    keyDownHandlerRef.current(row, columnKey, keyboardEvent);
+  }, []);
+
+  const handleValueChange = useCallback((row, columnKey, nextValue) => {
+    const nextDraft = valueChangeHandlerRef.current(row, columnKey, nextValue);
+
+    if (nextDraft) {
+      latestDraftsRef.current = {
+        ...latestDraftsRef.current,
+        [row.id]: nextDraft
+      };
+    }
+
+    if (columnKey === 'activityLabel' && nextDraft && row.rowType !== 'draft') {
+      changeCommitHandlerRef.current(row, columnKey, rowsRef.current, nextDraft);
+    }
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    clearEditingState,
+    insertInlineRow(day) {
+      insertDraftRow(day);
+    }
+  }), [clearEditingState, insertDraftRow]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <TableAutosaveStatus
+        isSaving={Object.keys(pendingCommitCountsByRowId).length > 0}
+        lastSavedAt={lastSavedAt}
+        lastErrorMessage={lastErrorMessage}
+      />
+
+      <section className="ui-table-shell">
+        <div className="ui-table-scroll">
+          <table
+            className="w-full table-fixed border-collapse text-sm text-slate-700 dark:text-slate-200"
+            style={{ minWidth: TABLE_DETAIL_TABLE_MIN_WIDTH }}
+          >
+            <colgroup>
+              {TABLE_DETAIL_COLUMNS.map((column) => (
+                <col key={column.key} style={{ width: column.width }} />
+              ))}
+            </colgroup>
+            <thead className="ui-table-head">
+              <tr>
+                {TABLE_DETAIL_COLUMNS.map((column) => (
+                  <th key={column.key} className="px-4 py-3">
+                    {column.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={TABLE_DETAIL_COLUMNS.length} className="px-4 py-10 text-center text-slate-500 dark:text-slate-400">
+                    Nenhum apontamento encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((event) => (
+                  <TableDetailRow
+                    key={`${event.rowType}-${event.id}`}
+                    activeColumnKey={activeCell?.rowId === event.id ? activeCell.columnKey : null}
+                    dailyDetailsByDate={dailyDetailsByDate}
+                    event={event}
+                    rowDraft={draftRowsById[event.id] || null}
+                    errorColumns={errorCellsByRowId[event.id] || EMPTY_FLAGS}
+                    isRowPending={Boolean(pendingCommitCountsByRowId[event.id])}
+                    minutesByDay={minutesByDay}
+                    onActivateCell={handleActivateCell}
+                    onCellBlur={handleBlurCell}
+                    onCellKeyDown={handleKeyDownCell}
+                    onCellValueChange={handleValueChange}
+                    onSelectEvent={onSelectEvent}
+                    onSelectRemoteEntry={onSelectRemoteEntry}
+                    projects={projects}
+                    savingColumns={savingCellsByRowId[event.id] || EMPTY_FLAGS}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+});
+
+export default TableDetailTable;

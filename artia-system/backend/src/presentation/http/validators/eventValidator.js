@@ -10,7 +10,7 @@ export const eventValidator = {
     body('activity.label').notEmpty().withMessage('Activity label is required'),
     body('notes').optional().isString(),
     body('artiaLaunched').optional().isBoolean(),
-    body('workplace').optional().isString()
+    body('workplace').optional({ values: 'null' }).isString()
   ],
 
   update: [
@@ -22,7 +22,7 @@ export const eventValidator = {
     body('activity.label').optional().notEmpty().withMessage('Activity label cannot be empty'),
     body('notes').optional().isString(),
     body('artiaLaunched').optional().isBoolean(),
-    body('workplace').optional().isString()
+    body('workplace').optional({ values: 'null' }).isString()
   ],
 
   move: [
@@ -36,5 +36,11 @@ export const eventValidator = {
       .optional()
       .isIn(['merge', 'replace'])
       .withMessage('Mode must be merge or replace')
+  ],
+
+  importApply: [
+    body('rows')
+      .isArray({ min: 1 })
+      .withMessage('Rows must be a non-empty array')
   ]
 };

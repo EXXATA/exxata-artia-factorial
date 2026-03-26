@@ -1,0 +1,76 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - heading "Desktop" [level=2] [ref=e4]
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - generic [ref=e9]: De
+          - textbox [ref=e10]: 2026-03-23
+        - generic [ref=e11]:
+          - generic [ref=e12]: Ate
+          - textbox [ref=e13]: 2026-03-29
+        - generic [ref=e14]:
+          - generic [ref=e15]: Projeto
+          - combobox [ref=e16]:
+            - option "Todos os projetos" [selected]
+        - generic [ref=e17]:
+          - generic [ref=e18]: Atividade
+          - combobox [ref=e19]:
+            - option "Todas as atividades" [selected]
+      - generic [ref=e20]:
+        - button "Importar tabela" [ref=e21] [cursor=pointer]
+        - button "Inserir linha na tabela" [ref=e22] [cursor=pointer]
+        - button "Novo apontamento" [ref=e23] [cursor=pointer]
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - button "Sem. anterior" [ref=e28] [cursor=pointer]
+          - button "Hoje" [ref=e29] [cursor=pointer]
+          - button "Prox. semana" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]: 23/03/2026 - 29/03/2026
+      - generic [ref=e33]:
+        - generic [ref=e34]: Projeto
+        - combobox [ref=e35]:
+          - option "Todos os projetos" [selected]
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]: Projeto
+        - searchbox "Buscar por nome ou codigo" [ref=e41]
+      - generic [ref=e42]:
+        - generic [ref=e43]: De
+        - textbox [ref=e44]: 2026-01-01
+      - generic [ref=e45]:
+        - generic [ref=e46]: Ate
+        - textbox [ref=e47]: 2026-03-26
+  - generic [ref=e48]:
+    - heading "Compacto" [level=2] [ref=e49]
+    - generic [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - generic [ref=e54]: De
+          - textbox [ref=e55]: 2026-03-23
+        - generic [ref=e56]:
+          - generic [ref=e57]: Ate
+          - textbox [ref=e58]: 2026-03-29
+        - generic [ref=e59]:
+          - generic [ref=e60]: Projeto
+          - combobox [ref=e61]:
+            - option "Todos os projetos" [selected]
+        - generic [ref=e62]:
+          - generic [ref=e63]: Atividade
+          - combobox [ref=e64]:
+            - option "Todas as atividades" [selected]
+      - generic [ref=e65]:
+        - button "Importar tabela" [ref=e66] [cursor=pointer]
+        - button "Novo apontamento" [ref=e67] [cursor=pointer]
+    - generic [ref=e69]:
+      - generic [ref=e70]:
+        - generic [ref=e71]:
+          - button "Sem. anterior" [ref=e72] [cursor=pointer]
+          - button "Hoje" [ref=e73] [cursor=pointer]
+          - button "Prox. semana" [ref=e74] [cursor=pointer]
+        - generic [ref=e75]: 23/03/2026 - 29/03/2026
+      - generic [ref=e77]:
+        - generic [ref=e78]: Projeto
+        - combobox [ref=e79]:
+          - option "Todos os projetos" [selected]

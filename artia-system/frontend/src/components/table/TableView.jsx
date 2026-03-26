@@ -1,19 +1,24 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import WorkspacePage from '../layout/WorkspacePage';
 import { useProjects } from '../../hooks/useProjects';
 import { useRegisterGlobalAction } from '../../hooks/useRegisterGlobalAction';
 import TableDetailTable from './TableDetailTable';
 import TableSummaryTable from './TableSummaryTable';
+import TableViewToolbar from './TableViewToolbar';
 import { useWeekViewData } from '../../hooks/useWeekViewData';
 import { useRangeSummaryView } from '../../hooks/useRangeSummaryView';
 import { formatDateISO, startOfWeekMonday, addDays } from '../../utils/dateUtils';
-import { getEventMinutesByDay } from '../../utils/eventViewUtils';
-import { calculateDuration } from '../../utils/timeUtils';
-import { formatProjectOptionLabel, normalizeProjectCatalogActivityOptions, normalizeProjectCatalogOptions } from '../../utils/viewFilterOptions';
-import { buildRemoteOnlyRows, getInclusiveDaySpan, sortRowsByDayAndStart } from './tableViewUtils';
+import {
+  mergeActivityFilterOptions,
+  mergeProjectFilterOptions
+} from '../../utils/viewFilterOptions';
+import { getActiveViewFilterValue, reconcileProjectAndActivityFilters } from '../../utils/viewFilterState.js';
+import { getInclusiveDaySpan, sortRowsByDayAndStart } from './tableViewUtils';
+import { getPreferredInlineDay } from './tableEditingUtils.js';
 
 const EventModal = lazy(() => import('../calendar/EventModal'));
 const ArtiaRemoteEntriesModal = lazy(() => import('../calendar/ArtiaRemoteEntriesModal'));
+const ImportModal = lazy(() => import('../import/ImportModal'));
 
 function ModalLoadingFallback() {
   return (
@@ -35,27 +40,73 @@ export default function TableView() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [draftEvent, setDraftEvent] = useState(null);
   const [selectedRemoteEntries, setSelectedRemoteEntries] = useState([]);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const daySpan = useMemo(() => getInclusiveDaySpan(startDate, endDate), [endDate, startDate]);
   const isDetailedMode = daySpan > 0 && daySpan <= 7;
+  const refreshTimeoutRef = useRef(null);
+  const detailTableRef = useRef(null);
 
   const detailQuery = useWeekViewData({
     startDate,
     endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined,
-    activity: activityFilter !== 'ALL' ? activityFilter : undefined,
+    projectKey: getActiveViewFilterValue(projectFilter),
+    activityKey: getActiveViewFilterValue(activityFilter),
     enabled: isDetailedMode
   });
   const summaryQuery = useRangeSummaryView({
     startDate,
     endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined,
-    activity: activityFilter !== 'ALL' ? activityFilter : undefined,
+    projectKey: getActiveViewFilterValue(projectFilter),
+    activityKey: getActiveViewFilterValue(activityFilter),
     enabled: !isDetailedMode
   });
   const { data: projectsData } = useProjects();
 
   const activeQuery = isDetailedMode ? detailQuery : summaryQuery;
+  const activeRefreshRef = useRef(activeQuery.refresh);
+
+  useEffect(() => {
+    activeRefreshRef.current = activeQuery.refresh;
+  }, [activeQuery.refresh]);
+
+  useEffect(() => () => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+  }, []);
+
+  const scheduleActiveRefresh = useCallback((delayMs = 650) => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+
+    refreshTimeoutRef.current = setTimeout(() => {
+      activeRefreshRef.current?.();
+    }, delayMs);
+  }, []);
+
+  const handlePersistedChange = useCallback((persistedEvent, operationType, committedFields = []) => {
+    if (operationType === 'create') {
+      scheduleActiveRefresh();
+      return;
+    }
+
+    if (committedFields.some((field) => (
+      field === 'day'
+      || field === 'startTime'
+      || field === 'endTime'
+      || field === 'project'
+      || field === 'activityLabel'
+    ))) {
+      scheduleActiveRefresh();
+      return;
+    }
+
+    if (committedFields.length > 0) {
+      scheduleActiveRefresh(2400);
+    }
+  }, [scheduleActiveRefresh]);
 
   useRegisterGlobalAction({
     id: `table:${startDate}:${endDate}:${projectFilter}:${activityFilter}:${isDetailedMode ? 'detail' : 'summary'}`,
@@ -66,12 +117,19 @@ export default function TableView() {
   const activeData = activeQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeProjectCatalogOptions(projectCatalog),
-    [projectCatalog]
+    () => mergeProjectFilterOptions({
+      catalogProjects: projectCatalog,
+      availableProjects: activeData?.availableProjects || []
+    }),
+    [activeData?.availableProjects, projectCatalog]
   );
   const activityOptions = useMemo(
-    () => normalizeProjectCatalogActivityOptions(projectCatalog, projectFilter),
-    [projectCatalog, projectFilter]
+    () => mergeActivityFilterOptions({
+      catalogProjects: projectCatalog,
+      availableActivities: activeData?.availableActivities || [],
+      selectedProjectKey: projectFilter
+    }),
+    [activeData?.availableActivities, projectCatalog, projectFilter]
   );
   const dailyDetails = activeData?.dailyDetails || [];
   const dailyDetailsByDate = useMemo(
@@ -82,36 +140,74 @@ export default function TableView() {
     () => [...(isDetailedMode ? activeData?.events || [] : [])].sort(sortRowsByDayAndStart),
     [activeData, isDetailedMode]
   );
-  const detailRows = useMemo(() => {
-    const systemRows = events.map((event) => ({
-      rowType: 'system',
-      ...event,
-      effortMinutes: calculateDuration(event.start, event.end)
-    }));
-
-    return [...systemRows, ...buildRemoteOnlyRows(dailyDetails)].sort(sortRowsByDayAndStart);
-  }, [dailyDetails, events]);
-  const minutesByDay = useMemo(() => getEventMinutesByDay(events), [events]);
-  useEffect(() => {
-    if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
-      setProjectFilter('ALL');
-      setActivityFilter('ALL');
-    }
-  }, [projectFilter, projectOptions]);
 
   useEffect(() => {
-    if (activityFilter !== 'ALL' && !activityOptions.some((activity) => activity.value === activityFilter)) {
-      setActivityFilter('ALL');
+    const nextFilters = reconcileProjectAndActivityFilters({
+      projectFilter,
+      activityFilter,
+      projectOptions,
+      activityOptions
+    });
+
+    if (nextFilters.projectFilter !== projectFilter) {
+      setProjectFilter(nextFilters.projectFilter);
+      setActivityFilter(nextFilters.activityFilter);
+      return;
     }
-  }, [activityFilter, activityOptions]);
+
+    if (nextFilters.activityFilter !== activityFilter) {
+      setActivityFilter(nextFilters.activityFilter);
+    }
+  }, [activityFilter, activityOptions, projectFilter, projectOptions]);
 
   useEffect(() => {
     setSelectedEvent(null);
     setSelectedRemoteEntries([]);
   }, [isDetailedMode]);
 
+  useEffect(() => {
+    detailTableRef.current?.clearEditingState?.();
+  }, [startDate, endDate, projectFilter, activityFilter, isDetailedMode]);
+
   const isEventModalOpen = Boolean(selectedEvent || draftEvent);
   const isRemoteEntriesModalOpen = selectedRemoteEntries.length > 0;
+
+  const handleSelectSystemEvent = useCallback((event) => {
+    detailTableRef.current?.clearEditingState?.();
+    setDraftEvent(null);
+    setSelectedEvent(event);
+  }, []);
+
+  const handleSelectRemoteEvent = useCallback((event) => {
+    detailTableRef.current?.clearEditingState?.();
+    setSelectedRemoteEntries([event]);
+  }, []);
+
+  const handleOpenImport = useCallback(() => {
+    detailTableRef.current?.clearEditingState?.();
+    setIsImportModalOpen(true);
+  }, []);
+
+  const handleOpenNewEvent = useCallback(() => {
+    const todayIso = formatDateISO(new Date());
+    const day = todayIso >= startDate && todayIso <= endDate ? todayIso : startDate;
+    detailTableRef.current?.clearEditingState?.();
+    setSelectedEvent(null);
+    setDraftEvent({ day, startTime: '08:00', endTime: '08:50' });
+  }, [endDate, startDate]);
+
+  const handleInsertInlineRow = useCallback(() => {
+    const preferredDay = getPreferredInlineDay({
+      startDate,
+      endDate,
+      todayIso: formatDateISO(new Date())
+    });
+
+    setSelectedEvent(null);
+    setDraftEvent(null);
+    setSelectedRemoteEntries([]);
+    detailTableRef.current?.insertInlineRow?.(preferredDay);
+  }, [endDate, startDate]);
 
   if (activeQuery.isLoading && !activeData) {
     return (
@@ -123,48 +219,29 @@ export default function TableView() {
     );
   }
 
-  const toolbar = (
-    <section className="ui-toolbar">
-      <div className="ui-toolbar-row">
-        <div className="ui-toolbar-group">
-          <label className="ui-label">De</label>
-          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="ui-input" />
-          <label className="ui-label">Ate</label>
-          <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="ui-input" />
-          <label className="ui-label">Projeto</label>
-          <select value={projectFilter} onChange={(event) => { setProjectFilter(event.target.value); setActivityFilter('ALL'); }} className="ui-input min-w-[220px]">
-            <option value="ALL">Todos os projetos</option>
-            {projectOptions.map((project) => (
-              <option key={project.key} value={project.number}>{formatProjectOptionLabel(project)}</option>
-            ))}
-          </select>
-          <label className="ui-label">Atividade</label>
-          <select value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="ui-input min-w-[220px]">
-            <option value="ALL">Todas as atividades</option>
-            {activityOptions.map((activity) => (
-              <option key={activity.key} value={activity.value}>{activity.label}</option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          onClick={() => {
-            const todayIso = formatDateISO(new Date());
-            const day = todayIso >= startDate && todayIso <= endDate ? todayIso : startDate;
-            setSelectedEvent(null);
-            setDraftEvent({ day, startTime: '08:00', endTime: '08:50' });
-          }}
-          className="inline-flex items-center rounded-xl border border-primary bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:border-primary-dark hover:bg-primary-dark"
-        >
-          + Novo apontamento
-        </button>
-      </div>
-    </section>
-  );
-
   return (
     <WorkspacePage
-      toolbar={toolbar}
+      toolbar={(
+        <TableViewToolbar
+          startDate={startDate}
+          endDate={endDate}
+          projectFilter={projectFilter}
+          activityFilter={activityFilter}
+          projectOptions={projectOptions}
+          activityOptions={activityOptions}
+          isDetailedMode={isDetailedMode}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onProjectFilterChange={(value) => {
+            setProjectFilter(value);
+            setActivityFilter('ALL');
+          }}
+          onActivityFilterChange={setActivityFilter}
+          onOpenImport={handleOpenImport}
+          onInsertInlineRow={handleInsertInlineRow}
+          onOpenNewEvent={handleOpenNewEvent}
+        />
+      )}
     >
       {activeQuery.isError ? (
         <div className="ui-banner-danger text-sm">
@@ -174,14 +251,14 @@ export default function TableView() {
 
       {isDetailedMode ? (
         <TableDetailTable
+          ref={detailTableRef}
+          dailyDetails={dailyDetails}
           dailyDetailsByDate={dailyDetailsByDate}
-          minutesByDay={minutesByDay}
-          rows={detailRows}
-          onSelectEvent={(event) => {
-            setDraftEvent(null);
-            setSelectedEvent(event);
-          }}
-          onSelectRemoteEntry={(event) => setSelectedRemoteEntries([event])}
+          events={events}
+          projects={projectCatalog}
+          onPersistedChange={handlePersistedChange}
+          onSelectEvent={handleSelectSystemEvent}
+          onSelectRemoteEntry={handleSelectRemoteEvent}
         />
       ) : (
         <TableSummaryTable dailyDetails={dailyDetails} />
@@ -209,6 +286,18 @@ export default function TableView() {
             entries={selectedRemoteEntries}
             title="Lancamento remoto do Artia"
             subtitle="Visualizacao somente leitura do lancamento remoto encontrado via MySQL."
+          />
+        </Suspense>
+      ) : null}
+
+      {isImportModalOpen ? (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ImportModal
+            isOpen={isImportModalOpen}
+            onClose={() => setIsImportModalOpen(false)}
+            onApplied={() => {
+              setIsImportModalOpen(false);
+            }}
           />
         </Suspense>
       ) : null}

@@ -7,7 +7,8 @@ import WorkspacePage from '../components/layout/WorkspacePage';
 import { useProjects } from '../hooks/useProjects';
 import { useWorkedHoursComparison } from '../hooks/useWorkedHoursComparison';
 import { useRegisterGlobalAction } from '../hooks/useRegisterGlobalAction';
-import { normalizeProjectCatalogActivityOptions, normalizeProjectCatalogOptions } from '../utils/viewFilterOptions';
+import { mergeActivityFilterOptions, mergeProjectFilterOptions } from '../utils/viewFilterOptions';
+import { getActiveViewFilterValue, reconcileProjectAndActivityFilters } from '../utils/viewFilterState.js';
 
 function getDefaultRange() {
   const endDate = new Date();
@@ -39,8 +40,8 @@ export default function WorkedHoursComparison() {
   const comparisonQuery = useWorkedHoursComparison({
     startDate,
     endDate,
-    project: projectFilter !== 'ALL' ? projectFilter : undefined,
-    activity: activityFilter !== 'ALL' ? activityFilter : undefined
+    projectKey: getActiveViewFilterValue(projectFilter),
+    activityKey: getActiveViewFilterValue(activityFilter)
   });
   const { data: projectsData } = useProjects();
 
@@ -53,12 +54,19 @@ export default function WorkedHoursComparison() {
   const data = comparisonQuery.data || null;
   const projectCatalog = projectsData?.data || [];
   const projectOptions = useMemo(
-    () => normalizeProjectCatalogOptions(projectCatalog),
-    [projectCatalog]
+    () => mergeProjectFilterOptions({
+      catalogProjects: projectCatalog,
+      availableProjects: data?.availableProjects || []
+    }),
+    [data?.availableProjects, projectCatalog]
   );
   const activityOptions = useMemo(
-    () => normalizeProjectCatalogActivityOptions(projectCatalog, projectFilter),
-    [projectCatalog, projectFilter]
+    () => mergeActivityFilterOptions({
+      catalogProjects: projectCatalog,
+      availableActivities: data?.availableActivities || [],
+      selectedProjectKey: projectFilter
+    }),
+    [data?.availableActivities, projectCatalog, projectFilter]
   );
   const stats = data?.stats || null;
   const dailyDetails = data?.dailyDetails || [];
@@ -66,17 +74,23 @@ export default function WorkedHoursComparison() {
   const activitySummaries = data?.activitySummaries || [];
 
   useEffect(() => {
-    if (projectFilter !== 'ALL' && !projectOptions.some((project) => String(project.number) === String(projectFilter))) {
-      setProjectFilter('ALL');
-      setActivityFilter('ALL');
-    }
-  }, [projectFilter, projectOptions]);
+    const nextFilters = reconcileProjectAndActivityFilters({
+      projectFilter,
+      activityFilter,
+      projectOptions,
+      activityOptions
+    });
 
-  useEffect(() => {
-    if (activityFilter !== 'ALL' && !activityOptions.some((activity) => activity.value === activityFilter)) {
-      setActivityFilter('ALL');
+    if (nextFilters.projectFilter !== projectFilter) {
+      setProjectFilter(nextFilters.projectFilter);
+      setActivityFilter(nextFilters.activityFilter);
+      return;
     }
-  }, [activityFilter, activityOptions]);
+
+    if (nextFilters.activityFilter !== activityFilter) {
+      setActivityFilter(nextFilters.activityFilter);
+    }
+  }, [activityFilter, activityOptions, projectFilter, projectOptions]);
 
   const filteredComparisons = useMemo(
     () => filterComparisonsByMode(dailyDetails, filter),

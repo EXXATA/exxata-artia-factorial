@@ -25,6 +25,7 @@ import { CSVGenerator } from './infrastructure/file-storage/CSVGenerator.js';
 import { XLSXGenerator } from './infrastructure/file-storage/XLSXGenerator.js';
 import { XLSXParser } from './infrastructure/file-storage/XLSXParser.js';
 import { LegacyEventsXLSXParser } from './infrastructure/file-storage/LegacyEventsXLSXParser.js';
+import { EventImportEngine } from './application/services/EventImportEngine.js';
 import { InMemoryTtlCache } from './infrastructure/cache/InMemoryTtlCache.js';
 
 // External Services
@@ -40,11 +41,12 @@ import { DeleteEventUseCase } from './application/use-cases/events/DeleteEventUs
 import { ListEventsUseCase } from './application/use-cases/events/ListEventsUseCase.js';
 import { MoveEventUseCase } from './application/use-cases/events/MoveEventUseCase.js';
 import { ImportLegacyEventsUseCase } from './application/use-cases/events/ImportLegacyEventsUseCase.js';
+import { AnalyzeEventImportUseCase } from './application/use-cases/events/AnalyzeEventImportUseCase.js';
+import { ApplyEventImportUseCase } from './application/use-cases/events/ApplyEventImportUseCase.js';
 import { ImportProjectsUseCase } from './application/use-cases/projects/ImportProjectsUseCase.js';
 import { SearchProjectsUseCase } from './application/use-cases/projects/SearchProjectsUseCase.js';
 import { ExportToCSVUseCase } from './application/use-cases/exports/ExportToCSVUseCase.js';
 import { ExportToXLSXUseCase } from './application/use-cases/exports/ExportToXLSXUseCase.js';
-import { GetWorkedHoursComparisonUseCase } from './application/use-cases/hours/GetWorkedHoursComparisonUseCase.js';
 import { AccessibleProjectCatalogService } from './application/services/AccessibleProjectCatalogService.js';
 import { CachedProjectAccessService } from './application/services/CachedProjectAccessService.js';
 import { IntegrationReadModelService } from './application/services/IntegrationReadModelService.js';
@@ -58,7 +60,6 @@ import { ProjectController } from './presentation/http/controllers/ProjectContro
 import { ExportController } from './presentation/http/controllers/ExportController.js';
 import { AuthController } from './presentation/http/controllers/AuthController.js';
 import { ViewController } from './presentation/http/controllers/ViewController.js';
-import { WorkedHoursController } from './presentation/http/controllers/WorkedHoursController.js';
 
 // Routes
 import { createEventRoutes } from './presentation/http/routes/eventRoutes.js';
@@ -66,7 +67,6 @@ import { createProjectRoutes } from './presentation/http/routes/projectRoutes.js
 import { createExportRoutes } from './presentation/http/routes/exportRoutes.js';
 import { createAuthRoutes } from './presentation/http/routes/authRoutes.js';
 import { createViewRoutes } from './presentation/http/routes/viewRoutes.js';
-import { createWorkedHoursRoutes } from './presentation/http/routes/workedHoursRoutes.js';
 
 const app = express();
 
@@ -134,6 +134,7 @@ const csvGenerator = new CSVGenerator();
 const xlsxGenerator = new XLSXGenerator();
 const xlsxParser = new XLSXParser();
 const legacyEventsXLSXParser = new LegacyEventsXLSXParser();
+const eventImportEngine = new EventImportEngine(legacyEventsXLSXParser);
 const inMemoryCache = new InMemoryTtlCache();
 
 const artiaDBService = new ArtiaDBService();
@@ -193,6 +194,17 @@ const importLegacyEventsUseCase = new ImportLegacyEventsUseCase(
   projectRepository,
   userReadProjectionService
 );
+const analyzeEventImportUseCase = new AnalyzeEventImportUseCase(
+  eventImportEngine,
+  eventRepository,
+  accessibleProjectCatalogService
+);
+const applyEventImportUseCase = new ApplyEventImportUseCase(
+  eventRepository,
+  eventValidationService,
+  accessibleProjectCatalogService,
+  userReadProjectionService
+);
 
 const importProjectsUseCase = new ImportProjectsUseCase(projectRepository, xlsxParser);
 const searchProjectsUseCase = new SearchProjectsUseCase(projectRepository);
@@ -200,12 +212,6 @@ const searchProjectsUseCase = new SearchProjectsUseCase(projectRepository);
 const exportToCSVUseCase = new ExportToCSVUseCase(eventRepository, csvGenerator);
 const exportToXLSXUseCase = new ExportToXLSXUseCase(eventRepository, xlsxGenerator);
 
-const getWorkedHoursComparisonUseCase = new GetWorkedHoursComparisonUseCase(
-  eventRepository,
-  userRepository,
-  integrationReadModelService,
-  accessibleProjectCatalogService
-);
 const getWeekViewUseCase = new GetWeekViewUseCase(userReadProjectionService);
 const getRangeSummaryViewUseCase = new GetRangeSummaryViewUseCase(userReadProjectionService);
 
@@ -216,6 +222,8 @@ const eventController = new EventController(
   listEventsUseCase,
   moveEventUseCase,
   importLegacyEventsUseCase,
+  analyzeEventImportUseCase,
+  applyEventImportUseCase,
   integrationReadModelService,
   accessibleProjectCatalogService
 );
@@ -230,7 +238,6 @@ const projectController = new ProjectController(
 const exportController = new ExportController(exportToCSVUseCase, exportToXLSXUseCase);
 
 const authController = new AuthController();
-const workedHoursController = new WorkedHoursController(getWorkedHoursComparisonUseCase);
 const viewController = new ViewController(getWeekViewUseCase, getRangeSummaryViewUseCase);
 
 // Routes
@@ -239,7 +246,6 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v1/auth', createAuthRoutes(authController));
-app.use('/api/v1/worked-hours', createWorkedHoursRoutes(workedHoursController, authMiddleware));
 app.use('/api/v1/views', createViewRoutes(viewController, authMiddleware));
 app.use('/api/v1/events', createEventRoutes(eventController));
 app.use('/api/v1/projects', createProjectRoutes(projectController));

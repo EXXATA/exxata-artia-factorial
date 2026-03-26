@@ -1,5 +1,6 @@
 import { buildProjectCatalogContext } from './projectContext.js';
 import { groupByDay } from './eventSerialization.js';
+import { normalizeViewFilterOptions } from './filterKeys.js';
 import { buildDayProjectionPayload, buildSourceTimestampByDay } from './projectionPersistence.js';
 import { buildRangeSummaryResponse } from './rangeSummaryBuilder.js';
 import { addDays, toIsoDay } from './shared.js';
@@ -189,19 +190,20 @@ export class UserReadProjectionService {
       throw new Error('Usuário não encontrado');
     }
 
-    const range = this.buildRange(options);
+    const normalizedOptions = normalizeViewFilterOptions(options);
+    const range = this.buildRange(normalizedOptions);
     await this.prepareProjectionRead(user, range, { forceRefresh: options.forceRefresh });
 
     const projectAccessScopeKey = this.cachedProjectAccessService.buildScopeKey(user.id);
     const [eventRows, dayRows, projectAccessRows, projectAccessSyncState] = await Promise.all([
-      this.projectionRepository.listEventProjections(user.id, range.startDate, range.endDate),
+      this.projectionRepository.listEventProjections(user.id, range.startDate, range.endDate, normalizedOptions),
       this.projectionRepository.listDayRollups(user.id, range.startDate, range.endDate),
       this.projectionRepository.listProjectAccess(user.id),
       this.snapshotRepository.getSyncState('user_project_access', projectAccessScopeKey)
     ]);
 
     return buildWeekViewResponse(eventRows, dayRows, {
-      ...options,
+      ...normalizedOptions,
       ...range,
       accessibleProjectCount: projectAccessRows.length,
       projectAccessLastSyncedAt: projectAccessSyncState?.last_synced_at || projectAccessRows[0]?.lastSyncedAt || null
@@ -214,16 +216,17 @@ export class UserReadProjectionService {
       throw new Error('Usuário não encontrado');
     }
 
-    const range = this.buildRange(options);
+    const normalizedOptions = normalizeViewFilterOptions(options);
+    const range = this.buildRange(normalizedOptions);
     await this.prepareProjectionRead(user, range, { forceRefresh: options.forceRefresh });
 
     const [dayRows, projectRows, activityRows] = await Promise.all([
       this.projectionRepository.listDayRollups(user.id, range.startDate, range.endDate),
-      this.projectionRepository.listProjectDayRollups(user.id, range.startDate, range.endDate),
-      this.projectionRepository.listActivityDayRollups(user.id, range.startDate, range.endDate)
+      this.projectionRepository.listProjectDayRollups(user.id, range.startDate, range.endDate, normalizedOptions),
+      this.projectionRepository.listActivityDayRollups(user.id, range.startDate, range.endDate, normalizedOptions)
     ]);
 
-    return buildRangeSummaryResponse(dayRows, projectRows, activityRows, { ...options, ...range });
+    return buildRangeSummaryResponse(dayRows, projectRows, activityRows, { ...normalizedOptions, ...range });
   }
 
   async recomputeDaysForUser(userId, days, { forceRefresh = false } = {}) {
